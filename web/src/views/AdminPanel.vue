@@ -102,9 +102,18 @@
             </el-table-column>
             <el-table-column prop="chunkCount" label="片段数" width="100" />
             <el-table-column prop="failureReason" label="失败原因" min-width="180" />
-            <el-table-column label="操作" width="220">
+            <el-table-column label="操作" width="300">
               <template #default="{ row }">
-                <el-button text type="primary" @click="download(row.id)">下载</el-button>
+                <el-button text type="primary" @click="download(row)">下载</el-button>
+                <el-button
+                  text
+                  type="success"
+                  :loading="processingDocumentId === row.id"
+                  :disabled="row.status === 'PROCESSING'"
+                  @click="processDocument(row.id)"
+                >
+                  {{ row.status === 'READY' ? '重新处理' : '处理' }}
+                </el-button>
                 <el-button v-if="row.status === 'FAILED'" text type="warning" @click="retry(row.id)">重试</el-button>
                 <el-button text type="danger" @click="remove(row.id)">删除</el-button>
               </template>
@@ -223,7 +232,131 @@
           </el-table>
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="Agent运行">
+        <div class="panel">
+          <div class="toolbar">
+            <el-select v-model="agentRunStatus" clearable placeholder="运行状态" class="toolbar-select" @change="loadAgentRuns">
+              <el-option label="运行中" value="RUNNING" />
+              <el-option label="已完成" value="COMPLETED" />
+              <el-option label="失败" value="FAILED" />
+            </el-select>
+            <el-select v-model="agentRunIntent" clearable placeholder="意图类型" class="toolbar-select" @change="loadAgentRuns">
+              <el-option label="订单查询" value="ORDER_QUERY" />
+              <el-option label="物流查询" value="SHIPPING_QUERY" />
+              <el-option label="商品咨询" value="PRODUCT_QUERY" />
+              <el-option label="知识库问答" value="KNOWLEDGE_QUERY" />
+              <el-option label="退款申请" value="REFUND_REQUEST" />
+              <el-option label="取消订单" value="CANCEL_ORDER" />
+            </el-select>
+            <el-button :icon="Refresh" @click="loadAgentRuns">刷新</el-button>
+          </div>
+          <el-table :data="agentRuns" border stripe v-loading="agentRunLoading">
+            <el-table-column prop="runId" label="运行ID" min-width="210" />
+            <el-table-column label="意图" width="120">
+              <template #default="{ row }">{{ intentLabel(row.intent) }}</template>
+            </el-table-column>
+            <el-table-column label="风险" width="95">
+              <template #default="{ row }">
+                <el-tag :type="riskType(row.riskLevel)" effect="light">{{ row.riskLevel || 'LOW' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="agentStatusType(row.status)" effect="light">{{ agentStatusLabel(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="工具" width="90">
+              <template #default="{ row }">{{ row.toolCallCount }}</template>
+            </el-table-column>
+            <el-table-column label="待审批" width="95">
+              <template #default="{ row }">
+                <el-tag v-if="row.pendingActionCount" type="warning">{{ row.pendingActionCount }}</el-tag>
+                <span v-else class="muted">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="开始时间" width="165">
+              <template #default="{ row }">{{ formatDate(row.startedAt) }}</template>
+            </el-table-column>
+            <el-table-column prop="finalAnswer" label="最终回答" min-width="260" show-overflow-tooltip />
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button text type="primary" @click="openAgentRun(row.runId)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
     </el-tabs>
+
+    <el-drawer v-model="agentRunDetailVisible" title="Agent运行详情" size="48%">
+      <template v-if="agentRunDetail">
+        <div class="run-summary">
+          <div>
+            <span>运行ID</span>
+            <strong>{{ agentRunDetail.run.runId }}</strong>
+          </div>
+          <div>
+            <span>意图</span>
+            <strong>{{ intentLabel(agentRunDetail.run.intent) }}</strong>
+          </div>
+          <div>
+            <span>状态</span>
+            <strong>{{ agentStatusLabel(agentRunDetail.run.status) }}</strong>
+          </div>
+          <div>
+            <span>风险</span>
+            <strong>{{ agentRunDetail.run.riskLevel || 'LOW' }}</strong>
+          </div>
+        </div>
+        <div class="detail-block">
+          <h3>最终回答</h3>
+          <p>{{ agentRunDetail.run.finalAnswer || '暂无最终回答' }}</p>
+        </div>
+        <div class="detail-block">
+          <h3>执行步骤</h3>
+          <el-timeline v-if="agentRunDetail.steps.length">
+            <el-timeline-item v-for="step in agentRunDetail.steps" :key="step.id" :timestamp="formatDate(step.createdAt)">
+              <div class="tool-call">
+                <div>
+                  <strong>{{ step.nodeName }}</strong>
+                  <el-tag size="small" :type="agentStatusType(step.status)">{{ agentStatusLabel(step.status) }}</el-tag>
+                </div>
+                <p v-if="step.inputSummary">输入：{{ step.inputSummary }}</p>
+                <p v-if="step.outputSummary">输出：{{ step.outputSummary }}</p>
+                <p v-if="step.errorSummary">异常：{{ step.errorSummary }}</p>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+          <el-empty v-else description="暂无执行步骤" />
+        </div>
+        <div class="detail-block">
+          <h3>工具调用</h3>
+          <el-timeline v-if="agentRunDetail.toolCalls.length">
+            <el-timeline-item v-for="tool in agentRunDetail.toolCalls" :key="tool.id" :timestamp="formatDate(tool.createdAt)">
+              <div class="tool-call">
+                <div>
+                  <strong>{{ tool.toolName }}</strong>
+                  <el-tag size="small" :type="tool.success ? 'success' : 'danger'">{{ tool.success ? '成功' : '失败' }}</el-tag>
+                </div>
+                <code>{{ tool.redactedArgumentsJson }}</code>
+                <p>{{ tool.resultSummary || '无返回摘要' }}</p>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+          <el-empty v-else description="暂无工具调用" />
+        </div>
+        <div class="detail-block">
+          <h3>审批动作</h3>
+          <el-table :data="agentRunDetail.actionRequests" border size="small">
+            <el-table-column prop="actionType" label="动作" width="145" />
+            <el-table-column prop="riskLevel" label="风险" width="90" />
+            <el-table-column prop="status" label="状态" width="110" />
+            <el-table-column prop="approvalNote" label="备注" min-width="180" show-overflow-tooltip />
+          </el-table>
+        </div>
+      </template>
+    </el-drawer>
   </section>
 </template>
 
@@ -302,6 +435,73 @@ interface OrderRow {
   eventNote?: string
 }
 
+interface AgentRunRow {
+  id: number
+  runId: string
+  threadId: string
+  conversationId: number
+  userId: number
+  status: string
+  intent?: string
+  riskLevel?: string
+  startedAt: string
+  completedAt?: string
+  finalAnswer?: string
+  errorType?: string
+  requestId: string
+  toolCallCount: number
+  pendingActionCount: number
+}
+
+interface AgentToolCallRow {
+  id: number
+  runId: string
+  toolName: string
+  redactedArgumentsJson: string
+  resultSummary?: string
+  success: boolean
+  retryCount: number
+  durationMs: number
+  createdAt: string
+}
+
+interface AgentStepRow {
+  id: number
+  runId: string
+  nodeName: string
+  inputSummary?: string
+  outputSummary?: string
+  status: string
+  durationMs: number
+  errorSummary?: string
+  createdAt: string
+}
+
+interface AgentActionRow {
+  id: number
+  runId: string
+  actionType: string
+  targetOrderId?: number
+  actionPayloadJson: string
+  riskLevel: string
+  status: string
+  idempotencyKey: string
+  lockVersion: number
+  createdBy: number
+  approvedBy?: number
+  approvalNote?: string
+  createdAt: string
+  approvedAt?: string
+  executedAt?: string
+}
+
+interface AgentRunDetail {
+  run: AgentRunRow
+  steps: AgentStepRow[]
+  toolCalls: AgentToolCallRow[]
+  actionRequests: AgentActionRow[]
+}
+
 const dashboard = reactive<Dashboard>({
   todayConsultations: 0,
   productCount: 0,
@@ -325,16 +525,31 @@ const documents = ref<DocumentRow[]>([])
 const tickets = ref<TicketRow[]>([])
 const products = ref<ProductRow[]>([])
 const orders = ref<OrderRow[]>([])
+const agentRuns = ref<AgentRunRow[]>([])
 const ticketStatus = ref('')
 const orderStatus = ref('')
+const agentRunStatus = ref('')
+const agentRunIntent = ref('')
 const documentLoading = ref(false)
+const processingDocumentId = ref<number | null>(null)
 const ticketLoading = ref(false)
 const productLoading = ref(false)
 const orderLoading = ref(false)
+const agentRunLoading = ref(false)
+const agentRunDetailVisible = ref(false)
+const agentRunDetail = ref<AgentRunDetail | null>(null)
 const modelConfigSaving = ref(false)
 
 onMounted(async () => {
-  await Promise.all([loadDashboard(), loadModelConfig(), loadDocuments(), loadTickets(), loadProducts(), loadOrders()])
+  await Promise.all([
+    loadDashboard(),
+    loadModelConfig(),
+    loadDocuments(),
+    loadTickets(),
+    loadProducts(),
+    loadOrders(),
+    loadAgentRuns()
+  ])
 })
 
 async function loadDashboard() {
@@ -390,8 +605,28 @@ async function uploadDocument(options: UploadRequestOptions) {
   }
 }
 
-function download(id: number) {
-  window.open(`/api/v1/admin/documents/${id}/download`, '_blank')
+async function download(row: DocumentRow) {
+  const response = await api.get(`/admin/documents/${row.id}/download`, { responseType: 'blob' })
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = row.originalName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function processDocument(id: number) {
+  processingDocumentId.value = id
+  try {
+    await unwrap(api.post(`/admin/documents/${id}/process`))
+    ElMessage.success('文档处理完成')
+    await Promise.all([loadDocuments(), loadDashboard()])
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '文档处理失败')
+    await loadDocuments()
+  } finally {
+    processingDocumentId.value = null
+  }
 }
 
 async function retry(id: number) {
@@ -464,6 +699,25 @@ async function updateTicket(row: TicketRow) {
   await Promise.all([loadTickets(), loadDashboard()])
 }
 
+async function loadAgentRuns() {
+  const params: Record<string, string | number> = { page: 1, size: 50 }
+  if (agentRunStatus.value) params.status = agentRunStatus.value
+  if (agentRunIntent.value) params.intent = agentRunIntent.value
+  agentRunLoading.value = true
+  try {
+    const data = await unwrap<{ records: AgentRunRow[] }>(api.get('/admin/agent/runs', { params }))
+    agentRuns.value = data.records
+  } finally {
+    agentRunLoading.value = false
+  }
+}
+
+async function openAgentRun(runId: string) {
+  const data = await unwrap<AgentRunDetail>(api.get(`/admin/agent/runs/${runId}`))
+  agentRunDetail.value = data
+  agentRunDetailVisible.value = true
+}
+
 function statusLabel(status: string) {
   return {
     COMPLETED: '已完成',
@@ -512,6 +766,40 @@ function orderStatusType(status: string) {
   if (status === 'IN_TRANSIT' || status === 'SHIPPED') return 'warning'
   if (status === 'CANCELLED' || status === 'REFUNDED') return 'info'
   return 'primary'
+}
+
+function agentStatusLabel(status: string) {
+  return {
+    RUNNING: '运行中',
+    COMPLETED: '已完成',
+    FAILED: '失败'
+  }[status] ?? status
+}
+
+function agentStatusType(status: string) {
+  if (status === 'COMPLETED') return 'success'
+  if (status === 'RUNNING') return 'warning'
+  if (status === 'FAILED') return 'danger'
+  return 'primary'
+}
+
+function intentLabel(intent?: string) {
+  if (!intent) return '未识别'
+  return {
+    ORDER_QUERY: '订单查询',
+    SHIPPING_QUERY: '物流查询',
+    PRODUCT_QUERY: '商品咨询',
+    KNOWLEDGE_QUERY: '知识库问答',
+    REFUND_REQUEST: '退款申请',
+    CANCEL_ORDER: '取消订单',
+    SMALL_TALK: '闲聊'
+  }[intent] ?? intent
+}
+
+function riskType(risk?: string) {
+  if (risk === 'HIGH') return 'danger'
+  if (risk === 'MEDIUM') return 'warning'
+  return 'success'
 }
 
 function formatDate(value?: string) {
@@ -589,6 +877,70 @@ function formatDate(value?: string) {
   align-items: center;
 }
 
+.run-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.run-summary div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #f0e5dc;
+  border-radius: 8px;
+  background: #fffaf6;
+}
+
+.run-summary span {
+  color: #8b7d72;
+  font-size: 13px;
+}
+
+.run-summary strong {
+  overflow-wrap: anywhere;
+  color: #3f342d;
+}
+
+.detail-block {
+  margin-top: 20px;
+}
+
+.detail-block h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #3f342d;
+}
+
+.detail-block p {
+  margin: 0;
+  color: #5f5048;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.tool-call {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-call > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-call code {
+  display: block;
+  padding: 10px;
+  border-radius: 6px;
+  background: #f7f1eb;
+  color: #5f5048;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .muted {
   color: #8b7d72;
 }
@@ -600,6 +952,7 @@ function formatDate(value?: string) {
 
   .order-action,
   .ticket-action,
+  .run-summary,
   .config-item {
     grid-template-columns: 1fr;
   }

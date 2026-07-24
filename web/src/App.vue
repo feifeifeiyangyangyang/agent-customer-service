@@ -56,7 +56,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ChatDotRound, DataBoard, Expand, Fold, SwitchButton } from '@element-plus/icons-vue'
 import { api, unwrap } from './api'
-import { currentUser, logout, type SessionUser } from './auth'
+import { currentUser, logout, sessionRefreshToken, type SessionUser } from './auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,7 +100,7 @@ async function checkHealth() {
 async function handleLogout() {
   const role = user.value?.role
   try {
-    await api.post('/auth/logout')
+    await api.post('/auth/logout', { refreshToken: sessionRefreshToken() })
   } catch {
     // Local cleanup still matters if the token has already expired.
   }

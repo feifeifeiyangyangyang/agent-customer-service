@@ -75,6 +75,7 @@ async function submit() {
     const actualRole: UserRole = data.user.role === 'ADMIN' ? 'admin' : 'customer'
     saveSession({
       token: data.accessToken,
+      refreshToken: data.refreshToken,
       userId: data.user.userId,
       username: data.user.username,
       name: data.user.name,

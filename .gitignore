@@ -5,10 +5,13 @@
 .idea/
 .vscode/
 .venv/
+server/.pip-tmp/
+*.egg-info/
 __pycache__/
 *.pyc
 
 server/target/
+legacy/java-server/target/
 web/node_modules/
 web/dist/
 

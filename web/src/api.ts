@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import { currentUser, logout, saveAccessToken, sessionToken } from './auth'
+import { currentUser, logout, saveAccessToken, sessionRefreshToken, sessionToken } from './auth'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -45,10 +45,12 @@ api.interceptors.response.use(
 
 async function refreshAccessToken(): Promise<string | null> {
   try {
-    const data = await unwrap<AuthTokenResponse>(api.post('/auth/refresh'))
+    const refreshToken = sessionRefreshToken()
+    if (!refreshToken) return null
+    const data = await unwrap<AuthTokenResponse>(api.post('/auth/refresh', { refreshToken }))
     const existing = currentUser()
     if (!existing) return data.accessToken
-    saveAccessToken(data.accessToken)
+    saveAccessToken(data.accessToken, data.refreshToken)
     return data.accessToken
   } catch {
     return null
@@ -64,6 +66,7 @@ export interface ApiResponse<T> {
 
 export interface AuthTokenResponse {
   accessToken: string
+  refreshToken?: string
   expiresIn: number
   user: {
     userId: number

@@ -1,145 +1,156 @@
-# 智服通
+# Smart Support System
 
-企业知识库客服与人工工单协同平台。项目定位是 Java 后端实习面试展示用的模块化单体应用，不是微服务系统。
+智服通 Agent 是一个面向电商售后场景的企业知识库客服与人工工单协同平台。
 
-## 项目背景
+当前主版本已经不是原来的 Java Spring Boot 项目，而是重构后的 **Python FastAPI + Vue + Agent/RAG** 项目。旧 Java 后端已移动到 `legacy/java-server/`，仅作为迁移参考，不参与当前运行和部署。
 
-面向电商售后场景，用户可以咨询发货、物流、退款、退换货、商品售后和账号问题。系统对订单、物流、商品问题优先查询业务数据；未命中业务数据时，再从企业知识库检索资料，相关度足够时调用大模型生成客服回复；相关度不足时不调用大模型，并引导用户创建人工工单。
+## 与旧 Java 版本的区别
 
-## 核心业务闭环
+| 对比项 | 旧 Java 版本 | 当前 Python Agent 版本 |
+| --- | --- | --- |
+| 后端技术栈 | Java Spring Boot | Python FastAPI |
+| 数据访问 | Java ORM / Mapper 风格 | SQLAlchemy 2.x Async ORM |
+| 数据迁移 | Flyway SQL | Alembic |
+| 智能客服 | 偏规则和普通知识库问答 | Agent 路由 + 工具调用 + RAG |
+| 鉴权 | 演示/基础鉴权 | Access JWT + Redis Refresh Token |
+| 知识库检索 | 基础关键词/向量思路 | 三路混合召回 + RRF + rerank |
+| 高风险操作 | 普通业务接口 | 取消订单、退款必须进入管理员审批 |
+| 审计能力 | 较弱 | Agent run、step、tool call、retrieval trace 全链路记录 |
+| 部署入口 | Java server | `server/` Python 后端 + `web/` Vue 前端 |
 
-1. 管理员上传知识库文档。
-2. 系统保存文档、创建处理任务，并异步解析、切片、生成向量、写入 Qdrant。
-3. 用户登录后发起咨询。
-4. 用户可以从商品列表模拟下单，生成待发货订单。
-5. 如果问题涉及订单、发货、物流或商品，系统优先查询业务订单和物流表并直接回答，并支持“最近订单”“第二个订单”“我买的杯子”等常见指代表达。
-6. 未命中业务数据时，系统执行关键词检索 + 向量检索，构建 RAG Prompt。
-7. 生成回答并保存引用来源快照。
-8. 无法可靠回答时，用户创建工单。
-9. 管理员通过仪表盘查看咨询、订单、工单、文档状态，并处理订单物流和工单。
+旧 Java 代码目录：
+
+```text
+legacy/java-server/
+```
+
+这个目录不再作为当前系统的启动入口。面试或演示时应重点介绍当前 Python Agent 版本。
+
+## 核心功能
+
+- 用户端客服聊天：支持商品咨询、订单查询、物流查询、退款/退货/破损售后咨询。
+- 商品与订单模拟：内置演示商品、下单、订单状态和物流信息。
+- 后台管理端：商品、订单、物流、工单、知识库文档、模型参数、Agent 运行轨迹。
+- 真实后端登录：用户端和管理端分角色登录。
+- 高风险动作审批：退款、取消订单不会由模型直接改库，必须进入管理员审批。
+- Agent 审计：记录每次 Agent 运行、执行步骤、工具调用、审批动作和检索轨迹。
+
+## RAG 检索能力
+
+当前版本实现的是：
+
+**三路混合召回：关键词检索、Dense Vector 语义检索、结构化业务规则检索；使用 RRF 进行结果融合，并通过 Cross-Encoder 进行重排序。**
+
+三路召回不是把 RRF、rerank 或 metadata filter 包装成检索通道，而是三条独立召回链路：
+
+- 关键词检索：基于 MySQL 知识库 chunk 的关键词匹配，适合政策术语、商品名、时间限制等精确匹配。
+- Dense Vector 检索：使用 Embedding + Qdrant，适合口语化表达和语义相近问题。
+- 结构化规则检索：基于售后规则表，根据商品分类、订单状态、发货/签收状态、签收天数、售后类型、规则版本和有效期筛选规则。
+
+结构化规则相关表：
+
+```text
+after_sale_rule
+after_sale_rule_condition
+after_sale_rule_version
+```
+
+检索轨迹表：
+
+```text
+agent_retrieval_trace
+```
+
+当通用文档和结构化业务规则冲突时，系统优先采用当前有效的结构化业务规则；如果冲突无法自动判断，应转人工处理。
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3.3.5、Spring MVC、Spring Security、MyBatis-Plus、MySQL、Redis、Flyway、Qdrant、ONNX Runtime、WebClient
-- 前端：Vue 3、TypeScript、Vite、Element Plus、Axios
-- 文档解析：PDFBox、Apache POI、CommonMark
-- 测试：JUnit 5、Mockito
-- 部署：Docker Compose、Nginx
+后端：
 
-## 架构图
+- Python 3.12
+- FastAPI
+- SQLAlchemy 2.x Async ORM
+- Alembic
+- MySQL
+- Redis
+- Qdrant
+- PyJWT
+- LangGraph fallback graph
 
-```mermaid
-flowchart LR
-  Web[Vue 用户端/管理端] --> API[Spring Boot API]
-  API --> Security[Spring Security JWT Filter]
-  Security --> Redis[(Redis)]
-  API --> MySQL[(MySQL)]
-  API --> Qdrant[(Qdrant)]
-  API --> Model[OpenAI-compatible Chat API]
-  API --> ONNX[Local ONNX Embedding]
+前端：
+
+- Vue 3
+- TypeScript
+- Vite
+- Element Plus
+- Axios
+
+测试与质量：
+
+- pytest
+- ruff
+- mypy
+- Vue TypeScript build
+
+## 目录结构
+
+```text
+smart-customer-service/
+├── server/                 # 当前 Python FastAPI 后端
+│   ├── app/                # 后端业务代码
+│   ├── alembic/            # 数据库迁移
+│   ├── scripts/            # 演示数据和验证脚本
+│   └── tests/              # 后端测试
+├── web/                    # Vue 前端
+├── deploy/                 # Docker Compose、Nginx、部署脚本
+├── legacy/java-server/     # 旧 Java 后端，仅作迁移参考
+├── docs/                   # 项目说明文档
+└── .env.example            # 本地配置模板，不包含真实 API Key
 ```
-
-## JWT + Redis 认证流程
-
-```mermaid
-sequenceDiagram
-  participant Web
-  participant API
-  participant Redis
-  Web->>API: POST /api/v1/auth/login
-  API->>API: BCrypt 校验密码
-  API->>Redis: 保存 Refresh Token 摘要
-  API-->>Web: Access Token + HttpOnly Refresh Cookie
-  Web->>API: Authorization: Bearer AccessToken
-  API->>Redis: 检查 Access Token jti 黑名单
-  API-->>Web: 业务响应
-```
-
-- Access Token 有效期默认 30 分钟。
-- Refresh Token 放在 HttpOnly Cookie，服务端只在 Redis 保存摘要。
-- 退出登录时删除 Refresh Token，并把当前 Access Token 的 jti 写入 Redis 黑名单。
-- 前端路由守卫只负责体验，真正权限边界在后端。
-
-## 文档处理状态机
-
-```mermaid
-stateDiagram-v2
-  [*] --> PENDING
-  PENDING --> PROCESSING
-  PROCESSING --> READY
-  PROCESSING --> FAILED
-  FAILED --> PENDING: retry
-```
-
-文档上传接口返回 202，不等待完整解析结束。处理任务记录在 `document_processing_task`，失败后进入重试等待，超过重试次数后标记为失败。
-
-## RAG 问答流程
-
-```mermaid
-flowchart TD
-  Q[用户问题] --> RL[Redis 限流]
-  RL --> Biz{订单/商品/物流问题?}
-  Biz -- 是 --> OrderDB[(订单与物流表)]
-  OrderDB --> BizAnswer[业务确定性回答]
-  Biz -- 否 --> E[Embedding]
-  E --> VS[Qdrant 向量检索]
-  Q --> KS[MySQL kb_chunk 关键词检索]
-  VS --> Merge[合并去重排序]
-  KS --> Merge
-  Merge --> Check{相关度足够?}
-  Check -- 否 --> Human[拒答并建议转人工]
-  Check -- 是 --> LLM[调用 ChatModelClient]
-  LLM --> Save[保存消息和 chat_message_source 来源快照]
-```
-
-## 工单状态机
-
-```mermaid
-stateDiagram-v2
-  [*] --> OPEN
-  OPEN --> PROCESSING
-  OPEN --> CLOSED
-  PROCESSING --> RESOLVED
-  PROCESSING --> CLOSED
-  RESOLVED --> CLOSED
-```
-
-非法状态流转会被拒绝。管理员处理工单时必须携带 `lockVersion`，并发修改冲突返回 409。
-
-## 主要数据表
-
-- `user_account`：用户账号、BCrypt 密码、角色和状态。
-- `kb_document`：文档元数据、SHA-256、上传人、处理状态。
-- `document_processing_task`：文档异步处理任务。
-- `kb_chunk`：持久化知识片段。
-- `product_catalog`：商品资料、库存、发货规则、售后规则。
-- `customer_order`：用户订单、状态、预计发货时间、收货信息，支持用户端模拟下单。
-- `shipment_event`：订单物流轨迹。
-- `chat_conversation`：用户会话。
-- `chat_message`：聊天消息。
-- `chat_message_source`：回答引用来源快照。
-- `support_ticket`：人工工单。
-- `ticket_operation_log`：工单操作日志。
 
 ## 本地启动
 
-1. 复制 `.env.example` 为 `.env`。
-2. 根据需要配置 MySQL、Redis、Qdrant 和模型路径。
-3. 不提供 `LLM_API_KEY` 时，使用 Mock ChatModel。
-4. 启动基础服务：
+### 1. 准备环境
 
-```powershell
-docker compose -f deploy/docker-compose.yml up -d mysql redis qdrant
-```
+需要安装：
 
-5. 启动后端：
+- Python 3.12.x
+- Node.js 18+
+- Docker Desktop
+
+不建议使用 Python 3.14 作为本项目运行环境。
+
+### 2. 安装后端依赖
 
 ```powershell
 cd server
-.\mvnw.cmd spring-boot:run
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-6. 启动前端：
+### 3. 启动基础服务
+
+```powershell
+cd ..
+docker compose -f deploy/docker-compose.yml up -d mysql redis qdrant
+```
+
+### 4. 初始化数据库和演示数据
+
+```powershell
+cd server
+.\.venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\python.exe scripts/seed_demo.py
+```
+
+### 5. 启动后端
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 18080
+```
+
+### 6. 启动前端
 
 ```powershell
 cd web
@@ -147,37 +158,94 @@ npm ci
 npm run dev
 ```
 
-## 环境变量
+访问地址：
 
-- `JWT_SECRET`：JWT 签名密钥，至少 32 字符。
-- `ACCESS_TOKEN_TTL_MINUTES`：Access Token 有效期。
-- `REFRESH_TOKEN_TTL_DAYS`：Refresh Token 有效期。
-- `CHAT_RATE_LIMIT_PER_MINUTE`：单用户每分钟聊天次数限制。
-- `LLM_TEMPERATURE`：默认大模型温度，管理端模型参数保存后以数据库运行时配置为准。
-- `DEMO_ADMIN_USERNAME` / `DEMO_ADMIN_PASSWORD`：本地演示管理员账号。
-- `DEMO_CUSTOMER_USERNAME` / `DEMO_CUSTOMER_PASSWORD`：本地演示用户账号。
-- `LLM_API_KEY`：真实大模型 API Key，只能写入本地 `.env`。
+- 前端：`http://127.0.0.1:5173`
+- 后端健康检查：`http://127.0.0.1:18080/api/v1/health`
 
-## 安全说明
+## 演示账号
 
-真实 API Key 不得写入源码、README、测试文件、日志或提交历史。`.env` 已加入 `.gitignore`。当前前端为了降低项目复杂度仍把 Access Token 保存在 localStorage，存在 XSS 风险，README 不将其描述为最安全方案。
+```text
+用户端：
+账号：user
+密码：123456
 
-## 测试
+管理端：
+账号：admin
+密码：admin123
+```
+
+## API Key 说明
+
+默认使用 Mock 模型，可不配置真实大模型 API Key：
+
+```text
+LLM_MOCK_ENABLED=true
+EMBEDDING_MOCK_ENABLED=true
+LLM_API_KEY=
+```
+
+如需接入 DeepSeek 或其他 OpenAI Compatible 模型，只能把真实 Key 写入本地 `.env`：
+
+```text
+LLM_MOCK_ENABLED=false
+LLM_API_KEY=
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL_NAME=deepseek-v4-flash
+```
+
+安全要求：
+
+- 不要把真实 API Key 写入源码。
+- 不要把真实 API Key 写入 README、测试文件、日志或压缩包。
+- `.env` 必须保留在 `.gitignore` 中。
+- 没有真实 Key 时，使用 Mock 模型完成编译、测试和演示。
+
+## 常用验证命令
+
+后端：
 
 ```powershell
 cd server
-.\mvnw.cmd test
-
-cd web
-npm run build
-
-docker compose -f deploy/docker-compose.yml config
+.\.venv\Scripts\python.exe -m compileall app scripts alembic tests
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m mypy app tests scripts
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-## 当前功能边界
+前端：
 
-已实现：JWT + Redis 认证、Refresh Token Cookie、退出黑名单、商品/订单/物流业务查询、用户端模拟下单、订单指代识别、管理端仪表盘、模型参数面板、文档异步任务、kb_chunk 持久化、RAG 来源快照、聊天限流、工单状态机、乐观锁、操作日志、用户端和管理端页面。
+```powershell
+cd web
+npm run build
+```
 
-管理端模型参数面板支持运行时调整 `temperature`、`topK`、最低相似度阈值和 Mock ChatModel 开关。保存后会影响后续新的客服问答。
+Docker Compose 配置：
 
-已补充 Docker healthcheck、Actuator health/readiness、Maven Wrapper。未完成：完整 Testcontainers 覆盖、WireMock 外部服务测试、生产级密钥管理。
+```powershell
+docker compose -f deploy/docker-compose.yml config --quiet
+```
+
+敏感信息扫描：提交或打包前需要检查源码、文档、日志和测试文件中是否出现真实 API Key；不要扫描 `.venv`、`node_modules`、`dist`、`.git` 等生成目录。
+
+## 当前已验证
+
+- 后端 lint 通过。
+- mypy 类型检查通过。
+- 后端 pytest 通过。
+- 前端构建通过。
+- Docker Compose 配置通过。
+- 敏感信息扫描未发现 API Key。
+- 本地接口验证通过：
+  - “收到破损商品怎么办？”会按当前有效售后规则回答。
+  - “这个拆封后还能退吗？”会按结构化售后规则和知识库资料回答。
+  - “查询所有订单”会查询用户真实订单列表。
+
+## 适合面试讲解的亮点
+
+- 从旧 Java 项目迁移为 Python Agent 后端，体现重构和架构演进能力。
+- 把普通客服问答升级为 Agent：意图识别、工具调用、风险控制、审批流、审计记录。
+- RAG 不只是向量库查询，而是关键词、Dense Vector、结构化规则三路独立召回。
+- 高风险业务动作采用“模型生成申请，管理员审批执行”的安全闭环。
+- 登录鉴权使用 Access JWT + Redis Refresh Token，而不是前端演示登录。
+- 每次 Agent 运行都有可追踪记录，便于排查回答依据和工具调用过程。

@@ -1,16 +1,28 @@
-FROM maven:3.9.9-eclipse-temurin-17 AS build
-WORKDIR /workspace/server
-COPY server/pom.xml .
-COPY server/src ./src
-RUN mvn -q clean package -DskipTests
+FROM python:3.12-slim
 
-FROM eclipse-temurin:17-jre
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
-COPY --from=build /workspace/server/target/smart-customer-service-0.1.0.jar app.jar
-RUN apt-get update \
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /app/data/documents
+
+COPY server/pyproject.toml ./
+RUN pip install --no-cache-dir ".[dev]"
+
+COPY server/app ./app
+COPY server/alembic ./alembic
+COPY server/alembic.ini ./alembic.ini
+COPY server/scripts ./scripts
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8080
-HEALTHCHECK --interval=20s --timeout=5s --start-period=40s --retries=5 CMD curl -fsS http://localhost:8080/actuator/health/readiness || exit 1
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+HEALTHCHECK --interval=20s --timeout=5s --start-period=40s --retries=5 CMD curl -fsS http://localhost:8080/api/v1/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

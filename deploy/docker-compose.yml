@@ -24,11 +24,6 @@ services:
       - "6334:6334"
     volumes:
       - qdrant-data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/healthz >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
 
   redis:
     image: redis:7.4-alpine
@@ -68,10 +63,13 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL_NAME: ${LLM_MODEL_NAME:-deepseek-v4-flash}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      LLM_MOCK_ENABLED: ${LLM_MOCK_ENABLED:-true}
       RAG_TOP_K: ${RAG_TOP_K:-5}
+      RAG_MIN_RETRIEVAL_SCORE: ${RAG_MIN_RETRIEVAL_SCORE:-0.35}
       DOCUMENT_STORAGE_PATH: /app/data/documents
       EMBEDDING_MODEL_PATH: /app/models/embedding/model.onnx
       EMBEDDING_TOKENIZER_PATH: /app/models/embedding/tokenizer.json
+      EMBEDDING_MOCK_ENABLED: ${EMBEDDING_MOCK_ENABLED:-true}
     ports:
       - "8080:8080"
     volumes:
@@ -81,14 +79,39 @@ services:
       mysql:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health"]
       interval: 20s
       timeout: 5s
       retries: 10
+
+  document-worker:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    command: ["python", "-m", "app.workers.document_worker"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-smart_customer_service}
+      MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change_me}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      EMBEDDING_MOCK_ENABLED: ${EMBEDDING_MOCK_ENABLED:-true}
+      DOCUMENT_STORAGE_PATH: /app/data/documents
+    volumes:
+      - document-data:/app/data/documents
+    depends_on:
+      mysql:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
 
   web:
     build:

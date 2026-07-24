@@ -37,4 +37,4 @@ if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("SERVER_P
 }
 
 Set-Location (Join-Path $root "server")
-.\mvnw.cmd spring-boot:run
+python -m uvicorn app.main:app --host 127.0.0.1 --port ([Environment]::GetEnvironmentVariable("SERVER_PORT", "Process"))
