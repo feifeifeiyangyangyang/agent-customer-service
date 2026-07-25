@@ -44,7 +44,7 @@ class AgentService:
     ) -> ChatResponse:
         now = datetime.now()
         run_id = "run_" + uuid4().hex
-        effective_question = await self._resolve_short_order_choice(session, conversation_id, question)
+        effective_question = await self._resolve_conversation_context(session, conversation_id, question)
         plan = build_rule_based_plan(effective_question)
         session.add(ChatMessage(conversation_id=conversation_id, role="USER", content=question, created_at=now))
         session.add(
@@ -134,32 +134,90 @@ class AgentService:
             needHuman=answer_response.needHuman,
         )
 
-    async def _resolve_short_order_choice(self, session: AsyncSession, conversation_id: int, question: str) -> str:
+    async def _resolve_conversation_context(self, session: AsyncSession, conversation_id: int, question: str) -> str:
+        if re.search(r"ORD[0-9A-Z]{8,}", question, flags=re.IGNORECASE):
+            return question
         index = self._short_choice_index(question)
-        previous = (
+        previous_messages = list((
             await session.execute(
                 select(ChatMessage)
                 .where(ChatMessage.conversation_id == conversation_id, ChatMessage.role == "ASSISTANT")
                 .order_by(ChatMessage.created_at.desc())
-                .limit(1)
+                .limit(6)
             )
-        ).scalar_one_or_none()
-        if previous is None:
+        ).scalars().all())
+        if not previous_messages:
             return question
 
-        if index is None:
-            if self._after_sale_follow_up(question) or self._shipping_rule_follow_up(question):
-                match = re.search(r"我查到订单\s+(ORD[0-9A-Z]+)", previous.content, flags=re.IGNORECASE)
-                if match:
-                    return f"订单 {match.group(1).upper()} {question.strip()}"
-            return question
+        if index is not None:
+            return self._resolve_order_choice_by_index(previous_messages, question, index)
 
-        if "多笔订单" not in previous.content:
-            return question
-        order_nos = re.findall(r"订单\s+(ORD[0-9A-Z]+)", previous.content, flags=re.IGNORECASE)
-        if index >= len(order_nos):
-            return question
-        return f"订单 {order_nos[index].upper()} 物流到哪里了"
+        clean = question.strip()
+        if self._order_context_follow_up(clean):
+            order_no = self._latest_order_no(previous_messages)
+            if order_no:
+                return f"订单 {order_no} {clean}"
+        if self._product_context_follow_up(clean):
+            product_name = self._latest_product_name(previous_messages)
+            if product_name:
+                return f"{product_name} {clean}"
+        return question
+
+    def _resolve_order_choice_by_index(self, messages: list[ChatMessage], question: str, index: int) -> str:
+        for message in messages:
+            content = str(message.content)
+            if "多笔订单" not in content:
+                continue
+            order_nos = re.findall(r"订单\s+(ORD[0-9A-Z]+)", content, flags=re.IGNORECASE)
+            if index < len(order_nos):
+                return f"订单 {order_nos[index].upper()} 物流到哪里了"
+        return question
+
+    def _latest_order_no(self, messages: list[ChatMessage]) -> str | None:
+        for message in messages:
+            content = str(message.content)
+            exact_match = re.search(r"我查到订单\s+(ORD[0-9A-Z]+)", content, flags=re.IGNORECASE)
+            if exact_match:
+                return str(exact_match.group(1)).upper()
+        for message in messages:
+            content = str(message.content)
+            order_nos = re.findall(r"订单\s+(ORD[0-9A-Z]+)", content, flags=re.IGNORECASE)
+            if len(order_nos) == 1:
+                return str(order_nos[0]).upper()
+        return None
+
+    def _latest_product_name(self, messages: list[ChatMessage]) -> str | None:
+        for message in messages:
+            content = str(message.content)
+            match = re.search(r"「([^」]+)」", content)
+            if match:
+                return str(match.group(1))
+        return None
+
+    def _order_context_follow_up(self, question: str) -> bool:
+        if not 0 < len(question) <= 24:
+            return False
+        terms = [
+            "物流",
+            "快递",
+            "发货",
+            "发货规则",
+            "发货时效",
+            "出库规则",
+            "多久发货",
+            "什么时候发货",
+            "退货",
+            "退款",
+            "退钱",
+            "退换货",
+            "售后",
+            "包装破损",
+            "破损",
+            "损坏",
+            "换货",
+            "拆封",
+        ]
+        return any(term in question for term in terms)
 
     def _short_choice_index(self, question: str) -> int | None:
         clean = question.strip()
@@ -181,6 +239,12 @@ class AgentService:
         if not 0 < len(clean) <= 16:
             return False
         return self._is_shipping_rule_question(clean)
+
+    def _product_context_follow_up(self, question: str) -> bool:
+        if not 0 < len(question) <= 18:
+            return False
+        terms = ["库存", "价格", "多少钱", "在售", "还有货", "发货规则", "发货时效", "售后规则"]
+        return any(term in question for term in terms)
 
     async def _answer_with_tools(
         self,
@@ -275,7 +339,8 @@ class AgentService:
                 return self._plain_response(
                     conversation_id,
                     f"「{product.product_name}」当前状态为{product.sale_status}，库存 {product.stock_quantity} 件，"
-                    f"售价 {product.price} 元。发货规则：{product.dispatch_rule}。售后说明：{product.after_sale_rule}",
+                    f"售价 {product.price} 元。发货规则：{self._clean_sentence(product.dispatch_rule)}。"
+                    f"售后说明：{self._clean_sentence(product.after_sale_rule)}。",
                 )
         retrieval_context = await self._build_retrieval_context(session, user, plan)
         candidates = cast(list[RetrievalCandidate], await tool_executor.execute(
@@ -296,9 +361,10 @@ class AgentService:
         sources = self._source_references(candidates)
         if candidates:
             best = candidates[0]
+            order_for_answer = await self._resolve_order(session, user, plan) if plan.order_reference else None
             return ChatResponse(
                 conversationId=conversation_id,
-                answer=self._knowledge_answer(candidates),
+                answer=self._knowledge_answer(candidates, order_for_answer, question),
                 sources=sources,
                 retrievalScore=best.rerank_score or best.fused_score or best.original_score,
                 confidenceLevel="MEDIUM" if (best.rerank_score or 0) >= 0.5 else "LOW",
@@ -511,12 +577,32 @@ class AgentService:
             )
         return sources
 
-    def _knowledge_answer(self, candidates: list[RetrievalCandidate]) -> str:
+    def _knowledge_answer(
+        self,
+        candidates: list[RetrievalCandidate],
+        order: CustomerOrder | None = None,
+        question: str = "",
+    ) -> str:
         structured = [candidate for candidate in candidates if candidate.source_type == "structured_rule"]
+        if order is not None and self._is_after_sale_rule_question(question):
+            product_rule = (
+                f"我查到这单商品是「{order.product.product_name}」。"
+                f"该商品售后规则：{self._clean_sentence(order.product.after_sale_rule)}。"
+            )
+            if structured:
+                return f"{product_rule}\n{structured[0].content}"
+            return product_rule
         if structured:
             rule = structured[0]
             return rule.content
         return candidates[0].content[:320]
+
+    def _is_after_sale_rule_question(self, question: str) -> bool:
+        terms = ["退货", "退款", "退钱", "售后", "破损", "损坏", "包装", "拆封", "换货", "能不能退", "怎么退"]
+        return any(term in question for term in terms)
+
+    def _clean_sentence(self, value: str) -> str:
+        return value.strip().rstrip("。.!！")
 
     def _record_retrieval_trace(
         self,

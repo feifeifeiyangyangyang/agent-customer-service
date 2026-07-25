@@ -73,12 +73,26 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[],
             decision_reason="用户提供了明确订单号，优先查询该订单真实状态。",
         )
+    product_ref = _extract_product_keyword(clean)
+    if product_ref and _is_product_rule_query(clean):
+        return AgentPlan(
+            intent="PRODUCT_QUERY",
+            goal=clean,
+            order_reference=None,
+            product_reference=product_ref,
+            required_tools=["get_product_information"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户咨询商品规则或商品基础信息，读取商品资料表。",
+        )
     if any(word in clean for word in ["物流", "快递", "发货", "到哪", "到哪里", "什么时候到"]):
         return AgentPlan(
             intent="SHIPPING_QUERY",
             goal=clean,
             order_reference=order_ref,
-            product_reference=_extract_product_keyword(clean),
+            product_reference=product_ref,
             required_tools=["get_order_detail"],
             action_type=None,
             risk_level="LOW",
@@ -91,7 +105,7 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             intent="PRODUCT_QUERY",
             goal=clean,
             order_reference=order_ref,
-            product_reference=_extract_product_keyword(clean),
+            product_reference=product_ref,
             required_tools=["get_product_information"],
             action_type=None,
             risk_level="LOW",
@@ -125,6 +139,11 @@ def _is_refund_action_request(question: str, order_ref: OrderReference | None) -
 
 def _is_after_sale_policy_query(question: str) -> bool:
     terms = ["退货", "退款", "退钱", "售后", "破损", "损坏", "包装", "拆封", "换货", "能不能退", "怎么退"]
+    return any(term in question for term in terms)
+
+
+def _is_product_rule_query(question: str) -> bool:
+    terms = ["发货规则", "发货时效", "出库规则", "售后规则", "库存", "价格", "多少钱", "还有货", "在售"]
     return any(term in question for term in terms)
 
 
@@ -186,10 +205,15 @@ def _extract_ordinal_index(question: str) -> int | None:
 
 
 def _extract_product_keyword(question: str) -> str | None:
+    upper = question.upper()
     if "洗脸巾" in question or "洗面巾" in question or "洁面巾" in question:
         return "洗面巾"
-    if "杯" in question or "H100" in question.upper():
+    if "C20" in upper:
+        return "C20"
+    if "杯" in question or "H100" in upper:
         return "杯"
+    if "P9" in upper:
+        return "P9"
     if "靠枕" in question or "枕头" in question:
         return "靠枕"
     return None

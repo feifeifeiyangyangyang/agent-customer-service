@@ -57,6 +57,24 @@ def test_explicit_order_no_with_shipping_rule_uses_order_tool() -> None:
     assert plan.required_tools == ["get_order_detail"]
 
 
+def test_product_code_with_shipping_rule_uses_product_tool() -> None:
+    plan = build_rule_based_plan("C20 发货规则")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.order_reference is None
+    assert plan.product_reference == "C20"
+    assert plan.required_tools == ["get_product_information"]
+
+
+def test_product_name_with_shipping_rule_uses_product_tool() -> None:
+    plan = build_rule_based_plan("云感靠枕 P9 发货规则")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.order_reference is None
+    assert plan.product_reference == "P9"
+    assert plan.required_tools == ["get_product_information"]
+
+
 def test_explicit_order_no_with_after_sale_question_routes_to_knowledge() -> None:
     plan = build_rule_based_plan("订单 ORD202607140003 能不能退货")
 
