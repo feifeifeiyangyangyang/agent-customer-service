@@ -20,6 +20,16 @@ def test_ordinal_order_reference_is_extracted() -> None:
     assert plan.order_reference.ordinal_index == 2
 
 
+def test_numeric_and_chinese_ordinal_order_reference_is_extracted() -> None:
+    numeric = build_rule_based_plan("第13个订单物流到哪里了")
+    chinese = build_rule_based_plan("第十三个订单物流到哪里了")
+
+    assert numeric.order_reference is not None
+    assert numeric.order_reference.ordinal_index == 12
+    assert chinese.order_reference is not None
+    assert chinese.order_reference.ordinal_index == 12
+
+
 def test_all_orders_question_routes_to_order_list_tool() -> None:
     plan = build_rule_based_plan("查询所有订单")
 
@@ -27,6 +37,15 @@ def test_all_orders_question_routes_to_order_list_tool() -> None:
     assert plan.order_reference is not None
     assert plan.order_reference.list_all is True
     assert plan.required_tools == ["list_my_orders"]
+
+
+def test_explicit_order_no_routes_to_order_query() -> None:
+    plan = build_rule_based_plan("ORD202607140003")
+
+    assert plan.intent == "ORDER_QUERY"
+    assert plan.order_reference is not None
+    assert plan.order_reference.order_no == "ORD202607140003"
+    assert plan.required_tools == ["get_order_detail"]
 
 
 def test_refund_request_requires_human_approval() -> None:

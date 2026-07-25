@@ -47,6 +47,19 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[] if order_ref or _extract_product_keyword(clean) else ["order_reference"],
             decision_reason="用户表达了退款意图，必须经过确认和管理员审批。",
         )
+    if order_ref and order_ref.order_no:
+        return AgentPlan(
+            intent="ORDER_QUERY",
+            goal=clean,
+            order_reference=order_ref,
+            product_reference=None,
+            required_tools=["get_order_detail"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户提供了明确订单号，优先查询该订单真实状态。",
+        )
     if any(word in clean for word in ["物流", "快递", "发货", "到哪", "到哪里", "什么时候到"]):
         return AgentPlan(
             intent="SHIPPING_QUERY",
@@ -101,6 +114,9 @@ def _extract_order_reference(question: str) -> OrderReference | None:
     match = ORDER_NO_PATTERN.search(question)
     if match:
         return OrderReference(order_no=match.group(1).upper())
+    ordinal = _extract_ordinal_index(question)
+    if ordinal is not None:
+        return OrderReference(ordinal_index=ordinal)
     for keyword, index in [("第一个", 0), ("第一单", 0), ("第二个", 1), ("第二单", 1), ("第三个", 2), ("第三单", 2)]:
         if keyword in question:
             return OrderReference(ordinal_index=index)
@@ -116,6 +132,39 @@ def _is_order_list_query(question: str) -> bool:
     order_words = ["订单", "下单", "买的", "购买", "商品"]
     list_words = ["所有", "全部", "列表", "列出", "查询", "查看", "分别", "哪些", "已经下单"]
     return any(word in question for word in order_words) and any(word in question for word in list_words)
+
+
+def _extract_ordinal_index(question: str) -> int | None:
+    match = re.search(r"第\s*(\d+)\s*(个|单|笔|条|件|号)?", question)
+    if match:
+        value = int(match.group(1))
+        return value - 1 if value > 0 else None
+    chinese_digits = {
+        "一": 1,
+        "二": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+        "十一": 11,
+        "十二": 12,
+        "十三": 13,
+        "十四": 14,
+        "十五": 15,
+        "十六": 16,
+        "十七": 17,
+        "十八": 18,
+        "十九": 19,
+        "二十": 20,
+    }
+    for word, value in sorted(chinese_digits.items(), key=lambda item: len(item[0]), reverse=True):
+        if f"第{word}" in question:
+            return value - 1
+    return None
 
 
 def _extract_product_keyword(question: str) -> str | None:

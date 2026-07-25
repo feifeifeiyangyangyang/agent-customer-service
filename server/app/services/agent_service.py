@@ -181,6 +181,14 @@ class AgentService:
                 if not orders:
                     return self._plain_response(conversation_id, "我这边暂时没有查到您的已下单商品。")
                 return self._plain_response(conversation_id, self._order_list_answer(orders))
+            if plan.order_reference and plan.order_reference.product_keyword and not plan.order_reference.latest:
+                matched_orders = await self._resolve_orders_by_args(
+                    session,
+                    user,
+                    ListMyOrdersArgs(product_keyword=plan.order_reference.product_keyword, limit=20),
+                )
+                if len(matched_orders) > 1:
+                    return self._plain_response(conversation_id, self._multiple_order_answer(matched_orders))
             order = cast(CustomerOrder | None, await tool_executor.execute(
                 session,
                 run_id,
@@ -385,6 +393,18 @@ class AgentService:
                 f"预计发货：{self._format_time(order.expected_ship_at)}。"
             )
         lines.append("您可以继续问“第几个订单物流到哪里了”，也可以直接按商品名或订单号查询。")
+        return "\n".join(lines)
+
+    def _multiple_order_answer(self, orders: list[CustomerOrder]) -> str:
+        lines = ["我查到这个商品有多笔订单，先不替您默认选某一单："]
+        for index, order in enumerate(orders, start=1):
+            latest_event = "暂无物流"
+            lines.append(
+                f"{index}. 订单 {order.order_no}，商品「{order.product.product_name}」，"
+                f"状态：{self._order_status_label(order.status)}，预计发货：{self._format_time(order.expected_ship_at)}，"
+                f"{latest_event}。"
+            )
+        lines.append("请直接发订单号，或说“第几个订单”，我再按那一单查询。")
         return "\n".join(lines)
 
     def _order_status_label(self, status: str) -> str:
