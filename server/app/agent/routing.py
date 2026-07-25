@@ -47,6 +47,19 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[] if order_ref or _extract_product_keyword(clean) else ["order_reference"],
             decision_reason="用户表达了退款意图，必须经过确认和管理员审批。",
         )
+    if order_ref and order_ref.order_no and _is_after_sale_policy_query(clean):
+        return AgentPlan(
+            intent="KNOWLEDGE_QUERY",
+            goal=clean,
+            order_reference=order_ref,
+            product_reference=_extract_product_keyword(clean),
+            required_tools=["search_knowledge_base"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户提供了明确订单号并咨询售后规则，结合订单状态检索售后规则。",
+        )
     if order_ref and order_ref.order_no:
         return AgentPlan(
             intent="ORDER_QUERY",
@@ -108,6 +121,11 @@ def _is_refund_action_request(question: str, order_ref: OrderReference | None) -
         return False
     action_words = ["我要", "帮我", "申请", "办理", "退一下", "给我退", "这单", "订单"]
     return order_ref is not None or any(word in question for word in action_words)
+
+
+def _is_after_sale_policy_query(question: str) -> bool:
+    terms = ["退货", "退款", "退钱", "售后", "破损", "损坏", "包装", "拆封", "换货", "能不能退", "怎么退"]
+    return any(term in question for term in terms)
 
 
 def _extract_order_reference(question: str) -> OrderReference | None:

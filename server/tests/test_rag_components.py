@@ -227,9 +227,19 @@ async def test_retrieve_continues_when_keyword_recall_fails(monkeypatch: pytest.
     async def fake_rule(*_args: object, **_kwargs: object) -> list[RetrievalCandidate]:
         return [rule_candidate]
 
+    async def empty_cache(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    async def noop_cache(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    from app.services.redis_runtime_service import redis_runtime_service
+
     monkeypatch.setattr(service, "keyword_recall", broken_keyword)
     monkeypatch.setattr(service, "dense_vector_recall", fake_dense)
     monkeypatch.setattr(service, "structured_rule_recall", fake_rule)
+    monkeypatch.setattr(redis_runtime_service, "get_json", empty_cache)
+    monkeypatch.setattr(redis_runtime_service, "set_json", noop_cache)
 
     candidates = await service.retrieve(object(), "收到商品坏了怎么办", limit=3)  # type: ignore[arg-type]
 

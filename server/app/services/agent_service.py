@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, cast
@@ -43,7 +44,8 @@ class AgentService:
     ) -> ChatResponse:
         now = datetime.now()
         run_id = "run_" + uuid4().hex
-        plan = build_rule_based_plan(question)
+        effective_question = await self._resolve_short_order_choice(session, conversation_id, question)
+        plan = build_rule_based_plan(effective_question)
         session.add(ChatMessage(conversation_id=conversation_id, role="USER", content=question, created_at=now))
         session.add(
             AgentRun(
@@ -63,11 +65,18 @@ class AgentService:
             session,
             run_id,
             "intent_router",
-            self._compact(question),
+            self._compact(effective_question),
             f"intent={plan.intent}, risk={plan.risk_level}",
             "COMPLETED",
         )
-        answer_response = await self._answer_with_tools(session, user, conversation_id, run_id, plan, question)
+        answer_response = await self._answer_with_tools(
+            session,
+            user,
+            conversation_id,
+            run_id,
+            plan,
+            effective_question,
+        )
         self._record_step(
             session,
             run_id,
@@ -83,7 +92,7 @@ class AgentService:
                 "conversation_id": conversation_id,
                 "authenticated_user_id": user.user_id,
                 "user_role": user.role,
-                "user_goal": question,
+                "user_goal": effective_question,
                 "intent": plan.intent,
                 "risk_level": plan.risk_level,
                 "final_answer": answer,
@@ -124,6 +133,33 @@ class AgentService:
             confidenceLevel=answer_response.confidenceLevel,
             needHuman=answer_response.needHuman,
         )
+
+    async def _resolve_short_order_choice(self, session: AsyncSession, conversation_id: int, question: str) -> str:
+        index = self._short_choice_index(question)
+        if index is None:
+            return question
+        previous = (
+            await session.execute(
+                select(ChatMessage)
+                .where(ChatMessage.conversation_id == conversation_id, ChatMessage.role == "ASSISTANT")
+                .order_by(ChatMessage.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if previous is None or "多笔订单" not in previous.content:
+            return question
+        order_nos = re.findall(r"订单\s+(ORD[0-9A-Z]+)", previous.content, flags=re.IGNORECASE)
+        if index >= len(order_nos):
+            return question
+        return f"订单 {order_nos[index].upper()} 物流到哪里了"
+
+    def _short_choice_index(self, question: str) -> int | None:
+        clean = question.strip()
+        if clean.isdigit():
+            value = int(clean)
+            return value - 1 if value > 0 else None
+        mapping = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4}
+        return mapping.get(clean)
 
     async def _answer_with_tools(
         self,
@@ -382,7 +418,7 @@ class AgentService:
             return f"{lead}这单已发货，当前状态是 {order.status}。"
         if order.status == "SIGNED":
             return f"{lead}这单已签收。如需售后，可以继续描述商品问题。"
-        return f"{lead}当前状态是 {order.status}。"
+        return f"{lead}当前状态是 {self._order_status_label(order.status)}。"
 
     def _order_list_answer(self, orders: list[CustomerOrder]) -> str:
         lines = ["我查到您已下单的商品如下，按下单时间从近到远排列："]
@@ -423,6 +459,16 @@ class AgentService:
     def _source_references(self, candidates: list[RetrievalCandidate]) -> list[SourceReference]:
         sources: list[SourceReference] = []
         for candidate in candidates:
+            if candidate.source_type == "structured_rule":
+                sources.append(
+                    SourceReference(
+                        documentId=0,
+                        fileName=f"售后规则：{candidate.metadata.get('rule_title', '结构化规则')}",
+                        snippet=candidate.content[:260],
+                        score=candidate.rerank_score or candidate.fused_score or candidate.original_score,
+                    )
+                )
+                continue
             if candidate.document_id is None:
                 continue
             sources.append(

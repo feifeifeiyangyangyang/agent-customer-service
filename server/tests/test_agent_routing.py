@@ -48,6 +48,15 @@ def test_explicit_order_no_routes_to_order_query() -> None:
     assert plan.required_tools == ["get_order_detail"]
 
 
+def test_explicit_order_no_with_after_sale_question_routes_to_knowledge() -> None:
+    plan = build_rule_based_plan("订单 ORD202607140003 能不能退货")
+
+    assert plan.intent == "KNOWLEDGE_QUERY"
+    assert plan.order_reference is not None
+    assert plan.order_reference.order_no == "ORD202607140003"
+    assert plan.required_tools == ["search_knowledge_base"]
+
+
 def test_refund_request_requires_human_approval() -> None:
     plan = build_rule_based_plan("我要退款 ORD20260719105534381")
 

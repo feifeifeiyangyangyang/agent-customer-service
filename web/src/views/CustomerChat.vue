@@ -126,8 +126,8 @@
             <div class="side-title source-title">引用资料</div>
             <div v-if="!lastSources.length" class="empty-source">客服回答引用知识库时会显示来源。</div>
             <button
-              v-for="source in lastSources"
-              :key="source.documentId + source.fileName"
+              v-for="(source, index) in lastSources"
+              :key="`${source.documentId}-${source.fileName}-${index}`"
               class="source-link"
               type="button"
               @click="openSource(source)"
