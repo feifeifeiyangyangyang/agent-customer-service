@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from decimal import Decimal
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from sqlalchemy import select, update
@@ -227,7 +227,7 @@ class AgentService:
             ),
             lambda resolved: f"resolved {len(resolved)} retrieval candidates",
         ))
-        self._record_retrieval_trace(session, run_id, candidates)
+        self._record_retrieval_trace(session, run_id, candidates, knowledge_service.last_diagnostics)
         sources = self._source_references(candidates)
         if candidates:
             best = candidates[0]
@@ -424,8 +424,39 @@ class AgentService:
         return candidates[0].content[:320]
 
     def _record_retrieval_trace(
-        self, session: AsyncSession, run_id: str, candidates: list[RetrievalCandidate]
+        self,
+        session: AsyncSession,
+        run_id: str,
+        candidates: list[RetrievalCandidate],
+        diagnostics: list[Any] | None = None,
     ) -> None:
+        for diagnostic in diagnostics or []:
+            payload = (
+                diagnostic.model_dump(mode="json")
+                if hasattr(diagnostic, "model_dump")
+                else {"value": str(diagnostic)}
+            )
+            status = str(payload.get("status", "UNKNOWN"))
+            if status == "OK":
+                continue
+            channel = str(payload.get("channel", "unknown"))
+            session.add(
+                AgentRetrievalTrace(
+                    run_id=run_id,
+                    candidate_id=f"diagnostic:{channel}",
+                    source_type=channel,
+                    document_id=None,
+                    chunk_id=None,
+                    rule_id=None,
+                    original_score=Decimal("0"),
+                    fused_score=None,
+                    rerank_score=None,
+                    selected=False,
+                    decision_reason=f"retrieval channel {status.lower()}: {payload.get('error_type') or 'unknown'}",
+                    metadata_json=json.dumps(payload, ensure_ascii=False),
+                    created_at=datetime.now(),
+                )
+            )
         selected_ids = {candidate.candidate_id for candidate in candidates[:3]}
         for candidate in candidates:
             session.add(

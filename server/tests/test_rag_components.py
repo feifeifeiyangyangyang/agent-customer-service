@@ -234,6 +234,10 @@ async def test_retrieve_continues_when_keyword_recall_fails(monkeypatch: pytest.
     candidates = await service.retrieve(object(), "收到商品坏了怎么办", limit=3)  # type: ignore[arg-type]
 
     assert {candidate.source_type for candidate in candidates} == {"dense_vector", "structured_rule"}
+    assert any(
+        diagnostic.channel == "keyword" and diagnostic.status == "FAILED"
+        for diagnostic in service.last_diagnostics
+    )
 
 
 @pytest.mark.asyncio

@@ -27,3 +27,10 @@ class RetrievalCandidate(BaseModel):
     fused_score: float | None = None
     rerank_score: float | None = None
     decision_reason: str | None = None
+
+
+class RetrievalChannelDiagnostic(BaseModel):
+    channel: SourceType | Literal["cache"]
+    status: Literal["OK", "FAILED", "DEGRADED"]
+    error_type: str | None = None
+    message: str | None = None

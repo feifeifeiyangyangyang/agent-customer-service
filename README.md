@@ -85,6 +85,8 @@ Redis 当前真实承担三类能力：
 
 文档 Worker 使用任务表异步处理文档，通过条件更新把 `PENDING` 原子抢占为 `PROCESSING`，并支持 `retry_count`、`next_retry_at`、最大重试次数和 `DEAD_LETTER` 状态。
 
+检索通道出现故障时，系统会记录日志并降级使用其他通道；失败通道、错误类型和降级原因会写入 `agent_retrieval_trace`，便于区分“没有资料”和“依赖服务故障”。
+
 健康检查拆分为：
 
 - `/api/v1/liveness`：进程存活。

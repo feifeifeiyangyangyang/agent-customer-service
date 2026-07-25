@@ -12,7 +12,7 @@ from app.db.models import AfterSaleRule, AfterSaleRuleCondition, KbChunk, KbDocu
 from app.embeddings.mock_embedding import MockEmbeddingClient
 from app.repositories.qdrant_store import VectorSearchHit, qdrant_store
 from app.schemas.chat import SourceReference
-from app.schemas.retrieval import RetrievalCandidate, RetrievalQueryContext
+from app.schemas.retrieval import RetrievalCandidate, RetrievalChannelDiagnostic, RetrievalQueryContext
 from app.services.redis_runtime_service import redis_runtime_service
 
 RRF_K = 60
@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class KnowledgeService:
+    def __init__(self) -> None:
+        self.last_diagnostics: list[RetrievalChannelDiagnostic] = []
+
     async def search(self, session: AsyncSession, query: str, limit: int | None = None) -> list[SourceReference]:
         candidates = await self.retrieve(session, query, limit=limit)
         return [
@@ -40,6 +43,8 @@ class KnowledgeService:
         limit: int | None = None,
         context: RetrievalQueryContext | None = None,
     ) -> list[RetrievalCandidate]:
+        diagnostics: list[RetrievalChannelDiagnostic] = []
+        self.last_diagnostics = diagnostics
         effective_limit = limit or settings.rag_top_k
         normalized = _normalize_query(query)
         extracted_context = _extract_context(normalized)
@@ -53,24 +58,55 @@ class KnowledgeService:
         try:
             cached = await redis_runtime_service.get_json("retrieval", cache_payload)
             if cached:
+                diagnostics.append(RetrievalChannelDiagnostic(channel="cache", status="OK"))
                 return [RetrievalCandidate.model_validate(candidate) for candidate in json.loads(cached)]
         except Exception:
             logger.exception("retrieval cache read failed; continuing without Redis cache")
+            diagnostics.append(
+                RetrievalChannelDiagnostic(channel="cache", status="DEGRADED", error_type="CACHE_READ_FAILED")
+            )
 
         try:
             keyword_candidates = await self.keyword_recall(session, normalized, effective_limit)
-        except Exception:
+            diagnostics.append(RetrievalChannelDiagnostic(channel="keyword", status="OK"))
+        except Exception as exc:
             logger.exception("keyword recall failed; continuing with remaining retrieval channels")
+            diagnostics.append(
+                RetrievalChannelDiagnostic(
+                    channel="keyword",
+                    status="FAILED",
+                    error_type=type(exc).__name__,
+                    message=str(exc)[:200],
+                )
+            )
             keyword_candidates = []
         try:
             vector_candidates = await self.dense_vector_recall(normalized, effective_limit)
-        except Exception:
+            diagnostics.append(RetrievalChannelDiagnostic(channel="dense_vector", status="OK"))
+        except Exception as exc:
             logger.exception("dense vector recall failed; continuing with remaining retrieval channels")
+            diagnostics.append(
+                RetrievalChannelDiagnostic(
+                    channel="dense_vector",
+                    status="FAILED",
+                    error_type=type(exc).__name__,
+                    message=str(exc)[:200],
+                )
+            )
             vector_candidates = []
         try:
             rule_candidates = await self.structured_rule_recall(session, normalized, effective_limit, extracted_context)
-        except Exception:
+            diagnostics.append(RetrievalChannelDiagnostic(channel="structured_rule", status="OK"))
+        except Exception as exc:
             logger.exception("structured rule recall failed; continuing with remaining retrieval channels")
+            diagnostics.append(
+                RetrievalChannelDiagnostic(
+                    channel="structured_rule",
+                    status="FAILED",
+                    error_type=type(exc).__name__,
+                    message=str(exc)[:200],
+                )
+            )
             rule_candidates = []
         fused = rrf_fuse([keyword_candidates, vector_candidates, rule_candidates])
         reranked = heuristic_rerank(normalized, fused, extracted_context)
@@ -86,6 +122,9 @@ class KnowledgeService:
             )
         except Exception:
             logger.exception("retrieval cache write failed; continuing without Redis cache")
+            diagnostics.append(
+                RetrievalChannelDiagnostic(channel="cache", status="DEGRADED", error_type="CACHE_WRITE_FAILED")
+            )
         return result
 
     async def keyword_recall(
