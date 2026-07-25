@@ -6,13 +6,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
-from app.core.security import AuthenticatedUser, require_admin
+from app.core.security import AuthenticatedUser, current_user, require_admin
 from app.db.models import DocumentProcessingTask, KbDocument
 from app.db.session import get_session
 from app.schemas.common import ApiResponse, PageResult
 from app.services.document_processing_service import document_processing_service
 
 router = APIRouter(prefix="/admin/documents", tags=["documents"])
+public_router = APIRouter(prefix="/knowledge/documents", tags=["knowledge-documents"])
 
 
 def document_response(row: KbDocument) -> dict[str, object]:
@@ -28,6 +29,36 @@ def document_response(row: KbDocument) -> dict[str, object]:
         "createdAt": row.created_at,
         "updatedAt": row.updated_at,
     }
+
+
+def public_document_response(row: KbDocument) -> dict[str, object]:
+    return {
+        "id": row.id,
+        "originalName": row.original_name,
+        "fileType": row.file_type,
+        "status": row.status,
+        "chunkCount": row.chunk_count,
+        "updatedAt": row.updated_at,
+    }
+
+
+@public_router.get("")
+async def list_public_documents(
+    _user: AuthenticatedUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse[list[dict[str, object]]]:
+    rows = (
+        (
+            await session.execute(
+                select(KbDocument)
+                .where(KbDocument.status.in_(["READY", "COMPLETED"]))
+                .order_by(KbDocument.updated_at.desc(), KbDocument.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return ApiResponse.ok([public_document_response(row) for row in rows])
 
 
 @router.get("")

@@ -27,7 +27,20 @@
             </div>
             <div v-for="message in messages" :key="message.id" class="message" :class="message.role.toLowerCase()">
               <div class="role">{{ message.role === 'USER' ? '我' : '客服' }}</div>
-              <div class="bubble">{{ message.content }}</div>
+              <div class="bubble">
+                <div>{{ message.content }}</div>
+                <div v-if="message.sources?.length" class="message-sources">
+                  <button
+                    v-for="(source, index) in message.sources"
+                    :key="`${message.id}-${source.documentId}-${source.fileName}-${index}`"
+                    type="button"
+                    class="inline-source-link"
+                    @click="openSource(source)"
+                  >
+                    引用：{{ source.fileName }}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -147,6 +160,19 @@
             <span>{{ source.fileName }}</span>
             <small>查看知识库片段</small>
           </button>
+
+          <div class="side-title source-title">知识库资料</div>
+          <div v-if="!knowledgeDocuments.length" class="empty-source">暂无可查看的知识库资料。</div>
+          <button
+            v-for="doc in knowledgeDocuments"
+            :key="doc.id"
+            class="source-link"
+            type="button"
+            @click="openDocumentSource(doc)"
+          >
+            <span>{{ doc.originalName }}</span>
+            <small>{{ doc.fileType }}，{{ doc.chunkCount }} 个片段，{{ documentStatusLabel(doc.status) }}</small>
+          </button>
         </div>
       </aside>
     </div>
@@ -226,6 +252,8 @@ interface MessageRow {
   id: number
   role: 'USER' | 'ASSISTANT' | 'SYSTEM'
   content: string
+  sourcesJson?: string | null
+  sources?: SourceReference[]
 }
 
 interface SourceReference {
@@ -233,6 +261,14 @@ interface SourceReference {
   fileName: string
   snippet: string
   score: number
+}
+
+interface KnowledgeDocumentRow {
+  id: number
+  originalName: string
+  fileType: string
+  status: string
+  chunkCount: number
 }
 
 interface TicketRow {
@@ -283,6 +319,7 @@ const messages = ref<MessageRow[]>([])
 const tickets = ref<TicketRow[]>([])
 const products = ref<ProductRow[]>([])
 const orders = ref<OrderRow[]>([])
+const knowledgeDocuments = ref<KnowledgeDocumentRow[]>([])
 const sideTab = ref<'products' | 'orders'>('products')
 const lastSources = ref<SourceReference[]>([])
 const sending = ref(false)
@@ -313,12 +350,13 @@ const orderSummary = computed(() => {
 onMounted(async () => {
   const conversation = await unwrap<{ id: number }>(api.post('/conversations', { title: '用户客服会话' }))
   conversationId.value = conversation.id
-  await Promise.all([loadTickets(), loadOrders(), loadProducts()])
+  await Promise.all([loadTickets(), loadOrders(), loadProducts(), loadKnowledgeDocuments()])
 })
 
 async function reloadMessages() {
   if (!conversationId.value) return
-  messages.value = await unwrap<MessageRow[]>(api.get(`/conversations/${conversationId.value}/messages`))
+  const rows = await unwrap<MessageRow[]>(api.get(`/conversations/${conversationId.value}/messages`))
+  messages.value = rows.map((row) => ({ ...row, sources: parseMessageSources(row.sourcesJson) }))
   await nextTick()
   messageListRef.value?.scrollTo({ top: messageListRef.value.scrollHeight, behavior: 'smooth' })
 }
@@ -359,6 +397,26 @@ async function clearConversation() {
 function openSource(source: SourceReference) {
   selectedSource.value = source
   sourceVisible.value = true
+}
+
+function openDocumentSource(document: KnowledgeDocumentRow) {
+  selectedSource.value = {
+    documentId: document.id,
+    fileName: document.originalName,
+    snippet: '这是当前知识库中的可检索文档。客服回答命中该文档时，会在回答下方显示对应片段引用。',
+    score: 0
+  }
+  sourceVisible.value = true
+}
+
+function parseMessageSources(value?: string | null): SourceReference[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value) as { sources?: SourceReference[] }
+    return Array.isArray(parsed.sources) ? parsed.sources : []
+  } catch {
+    return []
+  }
 }
 
 function openOrderDialog(product: ProductRow) {
@@ -418,6 +476,10 @@ async function loadProducts() {
   products.value = data.records
 }
 
+async function loadKnowledgeDocuments() {
+  knowledgeDocuments.value = await unwrap<KnowledgeDocumentRow[]>(api.get('/knowledge/documents'))
+}
+
 function statusLabel(status: string) {
   return {
     OPEN: '待处理',
@@ -439,6 +501,16 @@ function productStatusLabel(status: string) {
     ON_SALE: '在售',
     OUT_OF_STOCK: '缺货',
     OFF_SHELF: '下架'
+  }[status] ?? status
+}
+
+function documentStatusLabel(status: string) {
+  return {
+    READY: '已就绪',
+    COMPLETED: '已完成',
+    PROCESSING: '处理中',
+    PENDING: '待处理',
+    FAILED: '失败'
   }[status] ?? status
 }
 
@@ -708,6 +780,29 @@ function formatDate(value?: string) {
 
 .source-link small {
   color: #8b7d72;
+}
+
+.message-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.inline-source-link {
+  border: 1px solid #eadbd0;
+  border-radius: 999px;
+  background: #fffdfb;
+  color: #7a4a35;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.3;
+  padding: 5px 9px;
+}
+
+.inline-source-link:hover {
+  border-color: #d8aa93;
+  background: #fff7f1;
 }
 
 .business-card {
