@@ -118,23 +118,10 @@
               <small>数量：{{ order.quantity }}，预计发货：{{ formatDate(order.expectedShipAt) }}</small>
               <small v-if="order.shipmentEvents.length">最新物流：{{ order.shipmentEvents[0].eventNote }}</small>
               <div class="order-actions">
-                <el-button size="small" type="primary" plain @click="ask(`${order.product.productName} 物流到哪里了`)">查物流</el-button>
+                <el-button size="small" type="primary" plain @click="ask(`订单 ${order.orderNo} 物流到哪里了`)">查物流</el-button>
                 <el-button size="small" plain @click="ask(`订单 ${order.orderNo} 能不能退货`)">问售后</el-button>
               </div>
             </div>
-
-            <div class="side-title source-title">引用资料</div>
-            <div v-if="!lastSources.length" class="empty-source">客服回答引用知识库时会显示来源。</div>
-            <button
-              v-for="(source, index) in lastSources"
-              :key="`${source.documentId}-${source.fileName}-${index}`"
-              class="source-link"
-              type="button"
-              @click="openSource(source)"
-            >
-              <span>{{ source.fileName }}</span>
-              <small>查看知识库片段</small>
-            </button>
 
             <div class="side-title ticket-title">我的工单</div>
             <div v-if="!tickets.length" class="empty-source">暂无工单。需要人工处理时可以点击“转人工”。</div>
@@ -147,6 +134,19 @@
               <small v-if="item.handlingNote">处理备注：{{ item.handlingNote }}</small>
             </div>
           </template>
+
+          <div class="side-title source-title">引用资料</div>
+          <div v-if="!lastSources.length" class="empty-source">客服回答引用知识库时会显示来源。</div>
+          <button
+            v-for="(source, index) in lastSources"
+            :key="`${source.documentId}-${source.fileName}-${index}`"
+            class="source-link"
+            type="button"
+            @click="openSource(source)"
+          >
+            <span>{{ source.fileName }}</span>
+            <small>查看知识库片段</small>
+          </button>
         </div>
       </aside>
     </div>

@@ -59,7 +59,11 @@ class KnowledgeService:
             cached = await redis_runtime_service.get_json("retrieval", cache_payload)
             if cached:
                 diagnostics.append(RetrievalChannelDiagnostic(channel="cache", status="OK"))
-                return [RetrievalCandidate.model_validate(candidate) for candidate in json.loads(cached)]
+                return [
+                    candidate
+                    for candidate in [RetrievalCandidate.model_validate(item) for item in json.loads(cached)]
+                    if _is_visible_knowledge_candidate(candidate)
+                ]
         except Exception:
             logger.exception("retrieval cache read failed; continuing without Redis cache")
             diagnostics.append(
@@ -111,7 +115,11 @@ class KnowledgeService:
         fused = rrf_fuse([keyword_candidates, vector_candidates, rule_candidates])
         reranked = heuristic_rerank(normalized, fused, extracted_context)
         threshold = _threshold_for_query(normalized)
-        filtered = [candidate for candidate in reranked if (candidate.rerank_score or 0) >= threshold]
+        filtered = [
+            candidate
+            for candidate in reranked
+            if (candidate.rerank_score or 0) >= threshold and _is_visible_knowledge_candidate(candidate)
+        ]
         result = filtered[:effective_limit]
         try:
             await redis_runtime_service.set_json(
@@ -239,6 +247,11 @@ def _vector_hit_to_candidate(hit: VectorSearchHit) -> RetrievalCandidate:
         metadata={"file_name": hit.file_name, "payload": {"document_id": hit.document_id, "chunk_id": hit.chunk_id}},
         original_score=hit.score,
     )
+
+
+def _is_visible_knowledge_candidate(candidate: RetrievalCandidate) -> bool:
+    file_name = str(candidate.metadata.get("file_name", ""))
+    return not file_name.lower().startswith("e2e-")
 
 
 def rrf_fuse(result_sets: list[list[RetrievalCandidate]], k: int = RRF_K) -> list[RetrievalCandidate]:

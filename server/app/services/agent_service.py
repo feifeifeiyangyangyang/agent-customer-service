@@ -136,8 +136,6 @@ class AgentService:
 
     async def _resolve_short_order_choice(self, session: AsyncSession, conversation_id: int, question: str) -> str:
         index = self._short_choice_index(question)
-        if index is None:
-            return question
         previous = (
             await session.execute(
                 select(ChatMessage)
@@ -146,7 +144,17 @@ class AgentService:
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if previous is None or "多笔订单" not in previous.content:
+        if previous is None:
+            return question
+
+        if index is None:
+            if self._after_sale_follow_up(question):
+                match = re.search(r"我查到订单\s+(ORD[0-9A-Z]+)", previous.content, flags=re.IGNORECASE)
+                if match:
+                    return f"订单 {match.group(1).upper()} {question.strip()}"
+            return question
+
+        if "多笔订单" not in previous.content:
             return question
         order_nos = re.findall(r"订单\s+(ORD[0-9A-Z]+)", previous.content, flags=re.IGNORECASE)
         if index >= len(order_nos):
@@ -160,6 +168,13 @@ class AgentService:
             return value - 1 if value > 0 else None
         mapping = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4}
         return mapping.get(clean)
+
+    def _after_sale_follow_up(self, question: str) -> bool:
+        clean = question.strip()
+        if not 0 < len(clean) <= 12:
+            return False
+        terms = ["退货", "退款", "退钱", "退换货", "售后", "包装破损", "破损", "损坏", "换货", "拆封"]
+        return any(term in clean for term in terms)
 
     async def _answer_with_tools(
         self,
