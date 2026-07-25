@@ -304,11 +304,9 @@ class AgentService:
                 lambda args: self._create_action_request(session, user, run_id, resolved_order, action_type, args),
                 lambda request: f"created pending approval request {request.id or 'new'}",
             )
-            action_label = "取消订单" if action_type == "ORDER_CANCELLATION" else "退款"
             return self._plain_response(
                 conversation_id,
-                f"我已生成{action_label}申请计划，订单是 {resolved_order.order_no}。"
-                "这类操作不会由模型直接改数据库，需要您确认后进入管理员审批；审批通过后才会执行。",
+                self._action_request_answer(resolved_order, action_type),
             )
         if plan.intent in {"SHIPPING_QUERY", "ORDER_QUERY"}:
             if plan.order_reference and plan.order_reference.list_all:
@@ -559,6 +557,21 @@ class AgentService:
             f"售价 {product.price} 元。"
             f"发货规则：{self._clean_sentence(product.dispatch_rule)}。"
             f"售后规则：{self._clean_sentence(product.after_sale_rule)}。"
+        )
+
+    def _action_request_answer(self, order: CustomerOrder, action_type: str) -> str:
+        if action_type == "REFUND":
+            if order.status in {"PAID", "WAITING_SHIPMENT"}:
+                detail = "这单还没有发货，客服审核通过后会按原支付路径处理。"
+            else:
+                detail = "客服会结合商品状态、物流和凭证进行售后审核。"
+            return (
+                f"已为您提交退款申请，订单号 {order.order_no}，商品是「{order.product.product_name}」。"
+                f"{detail}您可以在当前页面继续补充原因或凭证，后台客服会尽快处理。"
+            )
+        return (
+            f"已为您登记取消订单申请，订单号 {order.order_no}，商品是「{order.product.product_name}」。"
+            "客服审核通过后会更新订单状态；如果订单已经进入发货流程，可能需要转为售后处理。"
         )
 
     async def _product_sources(self, session: AsyncSession, product: ProductCatalog) -> list[SourceReference]:

@@ -155,6 +155,15 @@ def test_refund_request_requires_human_approval() -> None:
     assert "request_refund" in plan.required_tools
 
 
+def test_refund_request_with_natural_phrase_requires_human_approval() -> None:
+    plan = build_rule_based_plan("我不想要了，想要退款")
+
+    assert plan.intent == "REFUND_REQUEST"
+    assert plan.risk_level == "HIGH"
+    assert plan.requires_confirmation is True
+    assert "request_refund" in plan.required_tools
+
+
 def test_refund_policy_question_routes_to_knowledge_base() -> None:
     plan = build_rule_based_plan("退款一般如何处理？")
 

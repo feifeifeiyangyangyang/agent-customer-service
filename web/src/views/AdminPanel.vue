@@ -233,6 +233,52 @@
         </div>
       </el-tab-pane>
 
+      <el-tab-pane label="审批申请">
+        <div class="panel">
+          <div class="toolbar">
+            <el-select v-model="actionStatus" clearable placeholder="审批状态" class="toolbar-select" @change="loadAgentActions">
+              <el-option label="待审批" value="PENDING" />
+              <el-option label="已执行" value="EXECUTED" />
+              <el-option label="已驳回" value="REJECTED" />
+            </el-select>
+            <el-button :icon="Refresh" @click="loadAgentActions">刷新</el-button>
+          </div>
+          <el-table :data="agentActions" border stripe v-loading="actionLoading">
+            <el-table-column label="类型" width="120">
+              <template #default="{ row }">{{ actionTypeLabel(row.actionType) }}</template>
+            </el-table-column>
+            <el-table-column label="风险" width="90">
+              <template #default="{ row }">
+                <el-tag :type="riskType(row.riskLevel)" effect="light">{{ row.riskLevel }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="105">
+              <template #default="{ row }">
+                <el-tag :type="actionStatusType(row.status)" effect="light">{{ actionStatusLabel(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="申请内容" min-width="260">
+              <template #default="{ row }">{{ actionPayloadLabel(row) }}</template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.approvalNote || '暂无' }}</template>
+            </el-table-column>
+            <el-table-column label="创建时间" width="165">
+              <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" fixed="right">
+              <template #default="{ row }">
+                <template v-if="row.status === 'PENDING'">
+                  <el-button text type="primary" @click="approveAction(row)">通过</el-button>
+                  <el-button text type="danger" @click="rejectAction(row)">驳回</el-button>
+                </template>
+                <span v-else class="muted">已处理</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
+
       <el-tab-pane label="Agent运行">
         <div class="panel">
           <div class="toolbar">
@@ -362,7 +408,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, type UploadRequestOptions } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { Refresh, Search, UploadFilled } from '@element-plus/icons-vue'
 import { api, unwrap } from '../api'
 
@@ -526,16 +572,19 @@ const tickets = ref<TicketRow[]>([])
 const products = ref<ProductRow[]>([])
 const orders = ref<OrderRow[]>([])
 const agentRuns = ref<AgentRunRow[]>([])
+const agentActions = ref<AgentActionRow[]>([])
 const ticketStatus = ref('')
 const orderStatus = ref('')
 const agentRunStatus = ref('')
 const agentRunIntent = ref('')
+const actionStatus = ref('PENDING')
 const documentLoading = ref(false)
 const processingDocumentId = ref<number | null>(null)
 const ticketLoading = ref(false)
 const productLoading = ref(false)
 const orderLoading = ref(false)
 const agentRunLoading = ref(false)
+const actionLoading = ref(false)
 const agentRunDetailVisible = ref(false)
 const agentRunDetail = ref<AgentRunDetail | null>(null)
 const modelConfigSaving = ref(false)
@@ -548,7 +597,8 @@ onMounted(async () => {
     loadTickets(),
     loadProducts(),
     loadOrders(),
-    loadAgentRuns()
+    loadAgentRuns(),
+    loadAgentActions()
   ])
 })
 
@@ -712,6 +762,59 @@ async function loadAgentRuns() {
   }
 }
 
+async function loadAgentActions() {
+  const params: Record<string, string> = {}
+  if (actionStatus.value) params.status = actionStatus.value
+  actionLoading.value = true
+  try {
+    agentActions.value = await unwrap<AgentActionRow[]>(api.get('/admin/agent/actions', { params }))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function approveAction(row: AgentActionRow) {
+  const note = await promptApprovalNote('确认通过该审批申请？', '审批通过后会更新对应订单状态。')
+  if (note === null) return
+  await unwrap(api.post(`/admin/agent/actions/${row.id}/approve`, {
+    lockVersion: row.lockVersion,
+    approvalNote: note || undefined
+  }))
+  ElMessage.success('审批已通过')
+  await Promise.all([loadAgentActions(), loadAgentRuns(), loadOrders(), loadDashboard()])
+  if (agentRunDetail.value?.run.runId === row.runId) {
+    await openAgentRun(row.runId)
+  }
+}
+
+async function rejectAction(row: AgentActionRow) {
+  const note = await promptApprovalNote('确认驳回该审批申请？', '请填写驳回原因，便于后续客服跟进。', true)
+  if (note === null) return
+  await unwrap(api.post(`/admin/agent/actions/${row.id}/reject`, {
+    lockVersion: row.lockVersion,
+    approvalNote: note || '后台驳回申请'
+  }))
+  ElMessage.success('审批已驳回')
+  await Promise.all([loadAgentActions(), loadAgentRuns(), loadDashboard()])
+  if (agentRunDetail.value?.run.runId === row.runId) {
+    await openAgentRun(row.runId)
+  }
+}
+
+async function promptApprovalNote(title: string, message: string, required = false): Promise<string | null> {
+  try {
+    const result = await ElMessageBox.prompt(message, title, {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputPlaceholder: required ? '请输入处理原因' : '可填写处理备注',
+      inputValidator: (value) => (!required || Boolean(value.trim())) || '请填写处理原因'
+    })
+    return result.value.trim()
+  } catch {
+    return null
+  }
+}
+
 async function openAgentRun(runId: string) {
   const data = await unwrap<AgentRunDetail>(api.get(`/admin/agent/runs/${runId}`))
   agentRunDetail.value = data
@@ -755,6 +858,8 @@ function orderStatusLabel(status: string) {
     SHIPPED: '已发货',
     IN_TRANSIT: '运输中',
     SIGNED: '已签收',
+    REFUND_PENDING: '退款处理中',
+    AFTER_SALE_REVIEWING: '售后审核中',
     REFUNDING: '退款中',
     REFUNDED: '已退款',
     CANCELLED: '已取消'
@@ -764,8 +869,40 @@ function orderStatusLabel(status: string) {
 function orderStatusType(status: string) {
   if (status === 'SIGNED') return 'success'
   if (status === 'IN_TRANSIT' || status === 'SHIPPED') return 'warning'
+  if (status === 'REFUND_PENDING' || status === 'AFTER_SALE_REVIEWING' || status === 'REFUNDING') return 'warning'
   if (status === 'CANCELLED' || status === 'REFUNDED') return 'info'
   return 'primary'
+}
+
+function actionTypeLabel(type: string) {
+  return {
+    REFUND: '退款申请',
+    ORDER_CANCELLATION: '取消订单'
+  }[type] ?? type
+}
+
+function actionStatusLabel(status: string) {
+  return {
+    PENDING: '待审批',
+    EXECUTED: '已执行',
+    REJECTED: '已驳回'
+  }[status] ?? status
+}
+
+function actionStatusType(status: string) {
+  if (status === 'EXECUTED') return 'success'
+  if (status === 'REJECTED') return 'danger'
+  if (status === 'PENDING') return 'warning'
+  return 'info'
+}
+
+function actionPayloadLabel(row: AgentActionRow) {
+  try {
+    const payload = JSON.parse(row.actionPayloadJson) as { reason?: string }
+    return payload.reason ? `原因：${payload.reason}` : row.actionPayloadJson
+  } catch {
+    return row.actionPayloadJson || '暂无'
+  }
 }
 
 function agentStatusLabel(status: string) {
