@@ -48,6 +48,15 @@ def test_explicit_order_no_routes_to_order_query() -> None:
     assert plan.required_tools == ["get_order_detail"]
 
 
+def test_explicit_order_no_with_shipping_rule_uses_order_tool() -> None:
+    plan = build_rule_based_plan("订单 ORD202607140003 发货规则")
+
+    assert plan.intent == "ORDER_QUERY"
+    assert plan.order_reference is not None
+    assert plan.order_reference.order_no == "ORD202607140003"
+    assert plan.required_tools == ["get_order_detail"]
+
+
 def test_explicit_order_no_with_after_sale_question_routes_to_knowledge() -> None:
     plan = build_rule_based_plan("订单 ORD202607140003 能不能退货")
 

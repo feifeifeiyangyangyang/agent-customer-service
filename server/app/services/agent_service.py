@@ -148,7 +148,7 @@ class AgentService:
             return question
 
         if index is None:
-            if self._after_sale_follow_up(question):
+            if self._after_sale_follow_up(question) or self._shipping_rule_follow_up(question):
                 match = re.search(r"我查到订单\s+(ORD[0-9A-Z]+)", previous.content, flags=re.IGNORECASE)
                 if match:
                     return f"订单 {match.group(1).upper()} {question.strip()}"
@@ -175,6 +175,12 @@ class AgentService:
             return False
         terms = ["退货", "退款", "退钱", "退换货", "售后", "包装破损", "破损", "损坏", "换货", "拆封"]
         return any(term in clean for term in terms)
+
+    def _shipping_rule_follow_up(self, question: str) -> bool:
+        clean = question.strip()
+        if not 0 < len(clean) <= 16:
+            return False
+        return self._is_shipping_rule_question(clean)
 
     async def _answer_with_tools(
         self,
@@ -425,6 +431,12 @@ class AgentService:
 
     def _order_answer(self, order: CustomerOrder, question: str) -> str:
         lead = f"我查到订单 {order.order_no} 是「{order.product.product_name}」。"
+        if self._is_shipping_rule_question(question):
+            return (
+                f"{lead}这个商品的发货规则是：{order.product.dispatch_rule}"
+                f"这单当前状态：{self._order_status_label(order.status)}，"
+                f"预计发货时间：{self._format_time(order.expected_ship_at)}。"
+            )
         if order.status in {"PAID", "WAITING_SHIPMENT"}:
             if any(word in question for word in ["物流", "快递", "到哪", "到哪里"]):
                 return f"{lead}这单还没有进入物流运输，预计发货时间是 {self._format_time(order.expected_ship_at)}。"
@@ -434,6 +446,9 @@ class AgentService:
         if order.status == "SIGNED":
             return f"{lead}这单已签收。如需售后，可以继续描述商品问题。"
         return f"{lead}当前状态是 {self._order_status_label(order.status)}。"
+
+    def _is_shipping_rule_question(self, question: str) -> bool:
+        return any(term in question for term in ["发货规则", "发货时效", "出库规则", "多久发货", "什么时候发货"])
 
     def _order_list_answer(self, orders: list[CustomerOrder]) -> str:
         lines = ["我查到您已下单的商品如下，按下单时间从近到远排列："]
