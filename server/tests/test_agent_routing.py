@@ -12,6 +12,16 @@ def test_shipping_question_with_product_keyword_routes_to_order_tool() -> None:
     assert plan.requires_confirmation is False
 
 
+def test_recent_product_shipping_question_keeps_product_keyword() -> None:
+    plan = build_rule_based_plan("我刚买的杯子什么时候发货？")
+
+    assert plan.intent == "SHIPPING_QUERY"
+    assert plan.order_reference is not None
+    assert plan.order_reference.product_keyword == "杯"
+    assert plan.order_reference.latest is True
+    assert plan.required_tools == ["get_order_detail"]
+
+
 def test_ordinal_order_reference_is_extracted() -> None:
     plan = build_rule_based_plan("第三个商品物流到哪里了")
 

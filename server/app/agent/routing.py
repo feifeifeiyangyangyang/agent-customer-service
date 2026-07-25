@@ -157,11 +157,12 @@ def _extract_order_reference(question: str) -> OrderReference | None:
     for keyword, index in [("第一个", 0), ("第一单", 0), ("第二个", 1), ("第二单", 1), ("第三个", 2), ("第三单", 2)]:
         if keyword in question:
             return OrderReference(ordinal_index=index)
-    if "最近" in question or "刚买" in question or "刚下单" in question:
-        return OrderReference(latest=True)
     product = _extract_product_keyword(question)
     if product:
-        return OrderReference(product_keyword=product)
+        is_recent_product = "最近" in question or "刚买" in question or "刚下单" in question
+        return OrderReference(product_keyword=product, latest=is_recent_product)
+    if "最近" in question or "刚买" in question or "刚下单" in question:
+        return OrderReference(latest=True)
     return None
 
 

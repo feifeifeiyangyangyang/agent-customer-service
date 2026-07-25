@@ -153,11 +153,12 @@ class AgentService:
             return self._resolve_order_choice_by_index(previous_messages, question, index)
 
         clean = question.strip()
-        if self._order_context_follow_up(clean):
+        has_current_product = self._has_explicit_product_mention(clean)
+        if self._order_context_follow_up(clean) and not has_current_product:
             order_no = self._latest_order_no(previous_messages)
             if order_no:
                 return f"订单 {order_no} {clean}"
-        if self._product_context_follow_up(clean):
+        if self._product_context_follow_up(clean) and not has_current_product:
             product_name = self._latest_product_name(previous_messages)
             if product_name:
                 return f"{product_name} {clean}"
@@ -245,6 +246,11 @@ class AgentService:
             return False
         terms = ["库存", "价格", "多少钱", "在售", "还有货", "发货规则", "发货时效", "售后规则"]
         return any(term in question for term in terms)
+
+    def _has_explicit_product_mention(self, question: str) -> bool:
+        upper = question.upper()
+        terms = ["杯", "H100", "洗脸巾", "洗面巾", "洁面巾", "C20", "靠枕", "枕头", "P9"]
+        return any(term in question or term in upper for term in terms)
 
     async def _answer_with_tools(
         self,
