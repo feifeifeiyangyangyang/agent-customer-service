@@ -439,8 +439,7 @@ class AgentService:
         structured = [candidate for candidate in candidates if candidate.source_type == "structured_rule"]
         if structured:
             rule = structured[0]
-            title = str(rule.metadata.get("rule_title", "售后规则"))
-            return f"{rule.content}\n\n依据：{title}。如果订单情况和描述不一致，建议转人工复核。"
+            return rule.content
         return candidates[0].content[:320]
 
     def _record_retrieval_trace(

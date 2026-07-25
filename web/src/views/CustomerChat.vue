@@ -125,12 +125,16 @@
 
             <div class="side-title source-title">引用资料</div>
             <div v-if="!lastSources.length" class="empty-source">客服回答引用知识库时会显示来源。</div>
-            <div v-for="source in lastSources" :key="source.documentId + source.fileName" class="source-item">
-              <div class="source-name">{{ source.fileName }}</div>
-              <p>{{ source.snippet }}</p>
-            </div>
-            <div class="metric">置信等级：{{ confidenceLabel }}</div>
-            <div class="metric">建议人工：{{ needHuman ? '是' : '否' }}</div>
+            <button
+              v-for="source in lastSources"
+              :key="source.documentId + source.fileName"
+              class="source-link"
+              type="button"
+              @click="openSource(source)"
+            >
+              <span>{{ source.fileName }}</span>
+              <small>查看知识库片段</small>
+            </button>
 
             <div class="side-title ticket-title">我的工单</div>
             <div v-if="!tickets.length" class="empty-source">暂无工单。需要人工处理时可以点击“转人工”。</div>
@@ -197,6 +201,16 @@
       <template #footer>
         <el-button @click="ticketVisible = false">取消</el-button>
         <el-button type="primary" :loading="ticketSubmitting" @click="createTicket">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="sourceVisible" title="知识库来源" width="560px">
+      <div v-if="selectedSource" class="source-dialog">
+        <div class="source-name">{{ selectedSource.fileName }}</div>
+        <p>{{ selectedSource.snippet }}</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="sourceVisible = false">知道了</el-button>
       </template>
     </el-dialog>
   </section>
@@ -271,14 +285,14 @@ const products = ref<ProductRow[]>([])
 const orders = ref<OrderRow[]>([])
 const sideTab = ref<'products' | 'orders'>('products')
 const lastSources = ref<SourceReference[]>([])
-const confidenceLevel = ref('')
-const needHuman = ref(false)
 const sending = ref(false)
 const ticketSubmitting = ref(false)
 const orderSubmitting = ref(false)
 const ticketVisible = ref(false)
 const orderVisible = ref(false)
 const selectedProduct = ref<ProductRow | null>(null)
+const selectedSource = ref<SourceReference | null>(null)
+const sourceVisible = ref(false)
 const messageListRef = ref<HTMLElement | null>(null)
 const ticket = reactive({ category: 'OTHER', contact: '', description: '' })
 const orderForm = reactive({
@@ -287,13 +301,6 @@ const orderForm = reactive({
   receiverPhone: '13800000001',
   receiverAddress: '上海市浦东新区演示路 100 号',
   remark: ''
-})
-
-const confidenceLabel = computed(() => {
-  if (confidenceLevel.value === 'HIGH') return '高'
-  if (confidenceLevel.value === 'MEDIUM') return '中'
-  if (confidenceLevel.value === 'LOW') return '低'
-  return '暂无'
 })
 
 const orderSummary = computed(() => {
@@ -329,8 +336,6 @@ async function ask(text: string) {
     }>(api.post('/chat', { conversationId: conversationId.value, question: content }))
     conversationId.value = data.conversationId
     lastSources.value = data.sources
-    confidenceLevel.value = data.confidenceLevel
-    needHuman.value = data.needHuman
     question.value = ''
     ticket.description = content
     await reloadMessages()
@@ -347,8 +352,13 @@ async function clearConversation() {
   await unwrap(api.delete(`/conversations/${conversationId.value}/messages`))
   messages.value = []
   lastSources.value = []
-  confidenceLevel.value = ''
-  needHuman.value = false
+  selectedSource.value = null
+  sourceVisible.value = false
+}
+
+function openSource(source: SourceReference) {
+  selectedSource.value = source
+  sourceVisible.value = true
 }
 
 function openOrderDialog(product: ProductRow) {
@@ -672,6 +682,34 @@ function formatDate(value?: string) {
   border-bottom: 1px solid #f0e5dc;
 }
 
+.source-link {
+  width: 100%;
+  border: 1px solid #eadbd0;
+  border-radius: 8px;
+  background: #fffdfb;
+  color: #5c463b;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.source-link:hover {
+  border-color: #d9b9a8;
+  background: #fff7f1;
+}
+
+.source-link span {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.source-link small {
+  color: #8b7d72;
+}
+
 .business-card {
   padding: 12px;
   border: 1px solid #f0e5dc;
@@ -686,6 +724,7 @@ function formatDate(value?: string) {
 }
 
 .source-item p,
+.source-dialog p,
 .ticket-item p,
 .order-item p,
 .product-item p {
