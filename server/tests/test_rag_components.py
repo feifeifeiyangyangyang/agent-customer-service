@@ -12,8 +12,8 @@ from app.services.knowledge_service import (
     KnowledgeService,
     _condition_matches,
     _extract_after_sale_type,
-    cross_encoder_rerank,
     dedupe_candidates,
+    heuristic_rerank,
     rrf_fuse,
 )
 
@@ -90,7 +90,7 @@ def test_rrf_fusion_deduplicates_same_chunk() -> None:
     assert fused[0].fused_score is not None
 
 
-def test_cross_encoder_rerank_promotes_structured_rule_for_order_context() -> None:
+def test_heuristic_rerank_promotes_structured_rule_for_order_context() -> None:
     doc = RetrievalCandidate(
         candidate_id="chunk:1",
         source_type="keyword",
@@ -114,7 +114,7 @@ def test_cross_encoder_rerank_promotes_structured_rule_for_order_context() -> No
         fused_score=0.01,
     )
 
-    reranked = cross_encoder_rerank(
+    reranked = heuristic_rerank(
         "这个拆封后还能退吗",
         [doc, rule],
         RetrievalQueryContext(has_specific_order=True, order_status="SIGNED", after_sale_type="RETURN"),

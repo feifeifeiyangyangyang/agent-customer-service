@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from app.agent.state import AgentState
 
@@ -13,17 +13,14 @@ def input_guard(state: AgentState) -> AgentState:
 
 
 def finalize_response(state: AgentState) -> AgentState:
+    if state.get("risk_level") == "FORBIDDEN":
+        state["final_answer"] = "这个请求可能涉及越权或不安全操作，我不能直接执行，建议转人工处理。"
     state.setdefault("final_answer", "已完成处理。")
     return state
 
 
-def build_agent_graph() -> Any:
-    """Build a LangGraph StateGraph when langgraph is installed.
-
-    The local desktop environment used during this migration does not currently include
-    langgraph. This function keeps the integration explicit without faking success.
-    """
-
+def build_response_guard_graph() -> Any:
+    """Build the small LangGraph used for input guard and response finalization."""
     try:
         from langgraph.graph import END, START, StateGraph
     except Exception:
@@ -38,9 +35,20 @@ def build_agent_graph() -> Any:
     return graph.compile()
 
 
+def run_response_guard_graph(state: AgentState) -> AgentState:
+    graph = build_response_guard_graph()
+    if graph is not None:
+        return cast(AgentState, graph.invoke(state))
+    return finalize_response(input_guard(state))
+
+
+def build_agent_graph() -> Any:
+    """Backward-compatible alias for the response guard graph."""
+    return build_response_guard_graph()
+
+
 def run_fallback_graph(state: AgentState, handler: Callable[[AgentState], AgentState]) -> AgentState:
     guarded = input_guard(state)
-    if guarded.get("risk_level") == "FORBIDDEN":
-        guarded["final_answer"] = "这个请求可能涉及越权或不安全操作，我不能直接执行，建议转人工处理。"
-        return finalize_response(guarded)
-    return finalize_response(handler(guarded))
+    if guarded.get("risk_level") != "FORBIDDEN":
+        guarded = handler(guarded)
+    return finalize_response(guarded)

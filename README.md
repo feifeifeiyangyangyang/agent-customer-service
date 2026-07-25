@@ -39,12 +39,12 @@ legacy/java-server/
 
 当前版本实现的是：
 
-**三路混合召回：关键词检索、Dense Vector 语义检索、结构化业务规则检索；使用 RRF 进行结果融合，并通过 Cross-Encoder 进行重排序。**
+**三路混合召回：关键词检索、Dense Vector 语义检索、结构化业务规则检索；使用 RRF 进行结果融合，并通过轻量级启发式重排提升结构化规则和关键词覆盖率高的结果。**
 
 三路召回不是把 RRF、rerank 或 metadata filter 包装成检索通道，而是三条独立召回链路：
 
 - 关键词检索：基于 MySQL 知识库 chunk 的关键词匹配，适合政策术语、商品名、时间限制等精确匹配。
-- Dense Vector 检索：使用 Embedding + Qdrant，适合口语化表达和语义相近问题。
+- Dense Vector 检索：当前默认使用 `MockEmbeddingClient` + Qdrant，适合验证向量库写入、召回链路和容错；如需真实语义效果，需要接入真实 Embedding 模型或服务。
 - 结构化规则检索：基于售后规则表，根据商品分类、订单状态、发货/签收状态、签收天数、售后类型、规则版本和有效期筛选规则。
 
 结构化规则相关表：
@@ -63,6 +63,33 @@ agent_retrieval_trace
 
 当通用文档和结构化业务规则冲突时，系统优先采用当前有效的结构化业务规则；如果冲突无法自动判断，应转人工处理。
 
+## Agent 与可靠性边界
+
+当前 Agent 链路不是“让大模型自由决定并直接改库”，而是：
+
+```text
+输入安全检查
+→ 确定性规则路由
+→ 统一工具执行器
+→ 业务表 / RAG / 审批请求
+→ LangGraph 响应安全守卫图
+```
+
+统一工具执行器会读取 `TOOL_REGISTRY` 中的工具策略，执行角色校验、Pydantic 参数校验、超时、重试、参数脱敏、耗时统计和 `agent_tool_call` 审计记录。取消订单、退款等高风险工具只创建审批请求，不由模型直接修改订单状态。
+
+Redis 当前真实承担三类能力：
+
+- Refresh Token 保存与轮换。
+- 聊天接口滑动窗口限流。
+- RAG 检索结果短期缓存。
+
+文档 Worker 使用任务表异步处理文档，通过条件更新把 `PENDING` 原子抢占为 `PROCESSING`，并支持 `retry_count`、`next_retry_at`、最大重试次数和 `DEAD_LETTER` 状态。
+
+健康检查拆分为：
+
+- `/api/v1/liveness`：进程存活。
+- `/api/v1/readiness`：检查 MySQL、Redis、Qdrant 是否可用。
+
 ## 技术栈
 
 后端：
@@ -75,7 +102,7 @@ agent_retrieval_trace
 - Redis
 - Qdrant
 - PyJWT
-- LangGraph fallback graph
+- LangGraph 响应安全守卫图
 
 前端：
 

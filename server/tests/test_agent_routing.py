@@ -26,7 +26,7 @@ def test_all_orders_question_routes_to_order_list_tool() -> None:
     assert plan.intent == "ORDER_QUERY"
     assert plan.order_reference is not None
     assert plan.order_reference.list_all is True
-    assert plan.required_tools == ["list_user_orders"]
+    assert plan.required_tools == ["list_my_orders"]
 
 
 def test_refund_request_requires_human_approval() -> None:

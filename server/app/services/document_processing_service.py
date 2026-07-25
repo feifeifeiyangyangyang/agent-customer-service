@@ -1,9 +1,10 @@
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -15,6 +16,7 @@ from app.rag.document_parser import extract_text
 from app.repositories.qdrant_store import VectorChunkPayload, qdrant_store
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class DocumentProcessingService:
@@ -94,7 +96,7 @@ class DocumentProcessingService:
         try:
             await qdrant_store.delete_document(document_id)
         except Exception:
-            pass
+            logger.exception("failed to delete document vectors from Qdrant document_id=%s", document_id)
         path = Path(document.storage_path)
         if path.exists() and path.is_file():
             path.unlink()
@@ -102,18 +104,42 @@ class DocumentProcessingService:
         await session.commit()
 
     async def process_next_pending(self, session: AsyncSession) -> bool:
-        task = (
-            await session.execute(
-                select(DocumentProcessingTask)
-                .where(DocumentProcessingTask.status == "PENDING")
-                .order_by(DocumentProcessingTask.created_at.asc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if task is None:
+        task_id = await self.claim_next_pending_task(session)
+        if task_id is None:
             return False
-        await self.process_task(session, task.id)
+        await self.process_task(session, task_id)
         return True
+
+    async def claim_next_pending_task(self, session: AsyncSession) -> int | None:
+        now = datetime.now()
+        rows = (
+            await session.execute(
+                select(DocumentProcessingTask.id)
+                .where(
+                    DocumentProcessingTask.status == "PENDING",
+                    DocumentProcessingTask.retry_count < DocumentProcessingTask.max_retry_count,
+                    or_(DocumentProcessingTask.next_retry_at.is_(None), DocumentProcessingTask.next_retry_at <= now),
+                )
+                .order_by(DocumentProcessingTask.created_at.asc())
+                .limit(5)
+            )
+        ).scalars()
+        for task_id in rows:
+            result = await session.execute(
+                update(DocumentProcessingTask)
+                .where(
+                    DocumentProcessingTask.id == task_id,
+                    DocumentProcessingTask.status == "PENDING",
+                    DocumentProcessingTask.retry_count < DocumentProcessingTask.max_retry_count,
+                    or_(DocumentProcessingTask.next_retry_at.is_(None), DocumentProcessingTask.next_retry_at <= now),
+                )
+                .values(status="PROCESSING", started_at=now, updated_at=now, error_message=None)
+            )
+            if result.rowcount == 1:
+                await session.commit()
+                return int(task_id)
+        await session.rollback()
+        return None
 
     async def process_task(self, session: AsyncSession, task_id: int) -> None:
         task = await session.get(DocumentProcessingTask, task_id)
@@ -124,9 +150,10 @@ class DocumentProcessingService:
             raise NotFoundError("文档不存在")
 
         now = datetime.now()
-        task.status = "PROCESSING"
-        task.started_at = now
-        task.updated_at = now
+        if task.status != "PROCESSING":
+            task.status = "PROCESSING"
+            task.started_at = now
+            task.updated_at = now
         document.status = "PROCESSING"
         document.updated_at = now
         await session.commit()
@@ -184,6 +211,7 @@ class DocumentProcessingService:
             task.updated_at = finished_at
             await session.commit()
         except Exception as exc:
+            logger.exception("document processing failed task_id=%s document_id=%s", task.id, document.id)
             await session.rollback()
             await self._mark_failed(session, document.id, task.id, str(exc))
 
@@ -192,14 +220,24 @@ class DocumentProcessingService:
         task = await session.get(DocumentProcessingTask, task_id)
         now = datetime.now()
         if document is not None:
-            document.status = "FAILED"
             document.failure_reason = reason[:512]
             document.updated_at = now
         if task is not None:
-            task.status = "FAILED"
+            next_retry_count = task.retry_count + 1
+            task.retry_count = next_retry_count
             task.error_message = reason[:1000]
-            task.finished_at = now
             task.updated_at = now
+            if next_retry_count >= task.max_retry_count:
+                task.status = "DEAD_LETTER"
+                task.finished_at = now
+                task.next_retry_at = None
+                if document is not None:
+                    document.status = "FAILED"
+            else:
+                task.status = "PENDING"
+                task.next_retry_at = now + timedelta(seconds=min(300, 30 * (2 ** (next_retry_count - 1))))
+                if document is not None:
+                    document.status = "PENDING"
         await session.commit()
 
 

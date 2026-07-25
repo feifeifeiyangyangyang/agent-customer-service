@@ -99,6 +99,10 @@ class QdrantKnowledgeStore:
                 vectors_config=VectorParams(size=settings.embedding_dimension, distance=Distance.COSINE),
             )
 
+    async def is_ready(self) -> bool:
+        await self._client_or_create().get_collection(COLLECTION_NAME)
+        return True
+
     def _client_or_create(self) -> AsyncQdrantClient:
         if self._client is None:
             kwargs: dict[str, Any] = {"host": settings.qdrant_host, "port": settings.qdrant_port}

@@ -14,7 +14,7 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             goal=clean,
             order_reference=OrderReference(list_all=True),
             product_reference=None,
-            required_tools=["list_user_orders"],
+            required_tools=["list_my_orders"],
             action_type=None,
             risk_level="LOW",
             requires_confirmation=False,

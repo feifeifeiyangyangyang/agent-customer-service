@@ -1,3 +1,5 @@
+import json
+import logging
 import re
 from collections.abc import Iterable
 from datetime import datetime
@@ -11,8 +13,10 @@ from app.embeddings.mock_embedding import MockEmbeddingClient
 from app.repositories.qdrant_store import VectorSearchHit, qdrant_store
 from app.schemas.chat import SourceReference
 from app.schemas.retrieval import RetrievalCandidate, RetrievalQueryContext
+from app.services.redis_runtime_service import redis_runtime_service
 
 RRF_K = 60
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeService:
@@ -41,24 +45,48 @@ class KnowledgeService:
         extracted_context = _extract_context(normalized)
         if context is not None:
             extracted_context = _merge_context(extracted_context, context)
+        cache_payload = {
+            "query": normalized,
+            "limit": effective_limit,
+            "context": extracted_context.model_dump(mode="json"),
+        }
+        try:
+            cached = await redis_runtime_service.get_json("retrieval", cache_payload)
+            if cached:
+                return [RetrievalCandidate.model_validate(candidate) for candidate in json.loads(cached)]
+        except Exception:
+            logger.exception("retrieval cache read failed; continuing without Redis cache")
 
         try:
             keyword_candidates = await self.keyword_recall(session, normalized, effective_limit)
         except Exception:
+            logger.exception("keyword recall failed; continuing with remaining retrieval channels")
             keyword_candidates = []
         try:
             vector_candidates = await self.dense_vector_recall(normalized, effective_limit)
         except Exception:
+            logger.exception("dense vector recall failed; continuing with remaining retrieval channels")
             vector_candidates = []
         try:
             rule_candidates = await self.structured_rule_recall(session, normalized, effective_limit, extracted_context)
         except Exception:
+            logger.exception("structured rule recall failed; continuing with remaining retrieval channels")
             rule_candidates = []
         fused = rrf_fuse([keyword_candidates, vector_candidates, rule_candidates])
-        reranked = cross_encoder_rerank(normalized, fused, extracted_context)
+        reranked = heuristic_rerank(normalized, fused, extracted_context)
         threshold = _threshold_for_query(normalized)
         filtered = [candidate for candidate in reranked if (candidate.rerank_score or 0) >= threshold]
-        return filtered[:effective_limit]
+        result = filtered[:effective_limit]
+        try:
+            await redis_runtime_service.set_json(
+                "retrieval",
+                cache_payload,
+                json.dumps([candidate.model_dump(mode="json") for candidate in result], ensure_ascii=False),
+                120,
+            )
+        except Exception:
+            logger.exception("retrieval cache write failed; continuing without Redis cache")
+        return result
 
     async def keyword_recall(
         self, session: AsyncSession, query: str, limit: int
@@ -105,6 +133,7 @@ class KnowledgeService:
             embedding = MockEmbeddingClient(settings.embedding_dimension)
             hits = await qdrant_store.search(embedding.embed(query), limit)
         except Exception:
+            logger.exception("qdrant dense vector search failed")
             return []
         return [_vector_hit_to_candidate(hit) for hit in hits]
 
@@ -187,7 +216,7 @@ def rrf_fuse(result_sets: list[list[RetrievalCandidate]], k: int = RRF_K) -> lis
     return sorted(merged.values(), key=lambda item: item.fused_score or 0, reverse=True)
 
 
-def cross_encoder_rerank(
+def heuristic_rerank(
     query: str, candidates: list[RetrievalCandidate], context: RetrievalQueryContext | None = None
 ) -> list[RetrievalCandidate]:
     terms = set(_extract_keywords(query))

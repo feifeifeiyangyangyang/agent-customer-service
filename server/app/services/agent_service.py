@@ -1,21 +1,28 @@
 import json
 from datetime import datetime
 from decimal import Decimal
+from typing import cast
 from uuid import uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agent.graph import run_fallback_graph
+from app.agent.graph import run_response_guard_graph
 from app.agent.routing import build_rule_based_plan
+from app.agent.tools.executor import tool_executor
+from app.agent.tools.registry import (
+    GetOrderDetailArgs,
+    ListMyOrdersArgs,
+    RequestOrderCancellationArgs,
+    RequestRefundArgs,
+)
 from app.core.security import AuthenticatedUser
 from app.db.models import (
     AgentActionRequest,
     AgentRetrievalTrace,
     AgentRun,
     AgentStep,
-    AgentToolCall,
     ChatMessage,
     CustomerOrder,
     ProductCatalog,
@@ -70,7 +77,7 @@ class AgentService:
             "COMPLETED",
         )
         answer = answer_response.answer
-        state = run_fallback_graph(
+        state = run_response_guard_graph(
             {
                 "run_id": run_id,
                 "conversation_id": conversation_id,
@@ -80,8 +87,7 @@ class AgentService:
                 "intent": plan.intent,
                 "risk_level": plan.risk_level,
                 "final_answer": answer,
-            },
-            lambda s: s,
+            }
         )
         final_answer = state.get("final_answer") or answer
         self._record_step(
@@ -129,62 +135,61 @@ class AgentService:
         question: str,
     ) -> ChatResponse:
         if plan.intent in {"CANCEL_ORDER", "REFUND_REQUEST"}:
-            order = await self._resolve_order(session, user, plan)
+            order = cast(CustomerOrder | None, await tool_executor.execute(
+                session,
+                run_id,
+                user,
+                "get_order_detail",
+                self._order_tool_args(plan),
+                lambda args: self._resolve_order_by_args(session, user, args),
+                lambda resolved: "resolved order" if resolved else "not found",
+            ))
             if order is None:
                 return self._plain_response(
                     conversation_id,
                     "我还没定位到要处理的订单。请补充订单号，或说明是最近订单/第几个订单。",
                 )
+            resolved_order = order
             action_type = "ORDER_CANCELLATION" if plan.intent == "CANCEL_ORDER" else "REFUND"
-            request = AgentActionRequest(
-                run_id=run_id,
-                action_type=action_type,
-                target_order_id=order.id,
-                action_payload_json=json.dumps({"reason": question}, ensure_ascii=False),
-                risk_level="HIGH",
-                status="PENDING",
-                idempotency_key=f"{action_type}:{order.id}:{user.user_id}:{run_id}",
-                created_by=user.user_id,
-                created_at=datetime.now(),
-            )
-            session.add(request)
-            await self._record_tool(
+            action_tool = "request_order_cancellation" if action_type == "ORDER_CANCELLATION" else "request_refund"
+            await tool_executor.execute(
                 session,
                 run_id,
-                "request_order_cancellation" if action_type == "ORDER_CANCELLATION" else "request_refund",
-                {"order_no": order.order_no},
-                "created pending approval",
-                True,
+                user,
+                action_tool,
+                {"order_no": resolved_order.order_no, "reason": question},
+                lambda args: self._create_action_request(session, user, run_id, resolved_order, action_type, args),
+                lambda request: f"created pending approval request {request.id or 'new'}",
             )
             action_label = "取消订单" if action_type == "ORDER_CANCELLATION" else "退款"
             return self._plain_response(
                 conversation_id,
-                f"我已生成{action_label}申请计划，订单是 {order.order_no}。"
+                f"我已生成{action_label}申请计划，订单是 {resolved_order.order_no}。"
                 "这类操作不会由模型直接改数据库，需要您确认后进入管理员审批；审批通过后才会执行。",
             )
         if plan.intent in {"SHIPPING_QUERY", "ORDER_QUERY"}:
             if plan.order_reference and plan.order_reference.list_all:
-                orders = await self._resolve_orders(session, user, limit=20)
-                await self._record_tool(
+                orders = cast(list[CustomerOrder], await tool_executor.execute(
                     session,
                     run_id,
-                    "list_user_orders",
+                    user,
+                    "list_my_orders",
                     {"limit": 20},
-                    f"resolved {len(orders)} orders",
-                    bool(orders),
-                )
+                    lambda args: self._resolve_orders_by_args(session, user, args),
+                    lambda resolved: f"resolved {len(resolved)} orders",
+                ))
                 if not orders:
                     return self._plain_response(conversation_id, "我这边暂时没有查到您的已下单商品。")
                 return self._plain_response(conversation_id, self._order_list_answer(orders))
-            order = await self._resolve_order(session, user, plan)
-            await self._record_tool(
+            order = cast(CustomerOrder | None, await tool_executor.execute(
                 session,
                 run_id,
+                user,
                 "get_order_detail",
-                plan.model_dump(mode="json"),
-                "resolved order" if order else "not found",
-                order is not None,
-            )
+                self._order_tool_args(plan),
+                lambda args: self._resolve_order_by_args(session, user, args),
+                lambda resolved: "resolved order" if resolved else "not found",
+            ))
             if order is None:
                 return self._plain_response(
                     conversation_id,
@@ -192,15 +197,15 @@ class AgentService:
                 )
             return self._plain_response(conversation_id, self._order_answer(order, question))
         if plan.intent == "PRODUCT_QUERY" and plan.product_reference:
-            product = await self._resolve_product(session, plan.product_reference)
-            await self._record_tool(
+            product = cast(ProductCatalog | None, await tool_executor.execute(
                 session,
                 run_id,
+                user,
                 "get_product_information",
-                {"keyword": plan.product_reference},
-                "resolved product" if product else "not found",
-                product is not None,
-            )
+                {"product_keyword": plan.product_reference},
+                lambda args: self._resolve_product(session, args.product_keyword),
+                lambda resolved: "resolved product" if resolved else "not found",
+            ))
             if product is not None:
                 return self._plain_response(
                     conversation_id,
@@ -208,17 +213,22 @@ class AgentService:
                     f"售价 {product.price} 元。发货规则：{product.dispatch_rule}。售后说明：{product.after_sale_rule}",
                 )
         retrieval_context = await self._build_retrieval_context(session, user, plan)
-        candidates = await knowledge_service.retrieve(session, question, context=retrieval_context)
-        self._record_retrieval_trace(session, run_id, candidates)
-        sources = self._source_references(candidates)
-        await self._record_tool(
+        candidates = cast(list[RetrievalCandidate], await tool_executor.execute(
             session,
             run_id,
-            "hybrid_retrieve_knowledge_base",
-            {"query": question, "channels": ["keyword", "dense_vector", "structured_rule"], "limit": len(candidates)},
-            "resolved knowledge" if candidates else "not found",
-            bool(candidates),
-        )
+            user,
+            "search_knowledge_base",
+            {"query": question, "limit": 5},
+            lambda args: knowledge_service.retrieve(
+                session,
+                args.query,
+                limit=args.limit,
+                context=retrieval_context,
+            ),
+            lambda resolved: f"resolved {len(resolved)} retrieval candidates",
+        ))
+        self._record_retrieval_trace(session, run_id, candidates)
+        sources = self._source_references(candidates)
         if candidates:
             best = candidates[0]
             return ChatResponse(
@@ -239,42 +249,89 @@ class AgentService:
     async def _resolve_order(
         self, session: AsyncSession, user: AuthenticatedUser, plan: AgentPlan
     ) -> CustomerOrder | None:
-        ref = plan.order_reference
+        return await self._resolve_order_by_args(
+            session,
+            user,
+            GetOrderDetailArgs.model_validate(self._order_tool_args(plan)),
+        )
+
+    async def _resolve_order_by_args(
+        self, session: AsyncSession, user: AuthenticatedUser, args: GetOrderDetailArgs
+    ) -> CustomerOrder | None:
         query = (
             select(CustomerOrder)
             .options(selectinload(CustomerOrder.product))
             .where(CustomerOrder.user_id == user.user_id)
         )
-        if ref and ref.order_no:
-            return (await session.execute(query.where(CustomerOrder.order_no == ref.order_no))).scalar_one_or_none()
+        if args.order_no:
+            return (await session.execute(query.where(CustomerOrder.order_no == args.order_no))).scalar_one_or_none()
         query = query.order_by(CustomerOrder.created_at.desc())
         orders = (await session.execute(query.limit(20))).scalars().all()
         if not orders:
             return None
-        if ref and ref.ordinal_index is not None:
-            return orders[ref.ordinal_index] if ref.ordinal_index < len(orders) else None
-        if ref and ref.product_keyword:
+        if args.ordinal_index is not None:
+            return orders[args.ordinal_index] if args.ordinal_index < len(orders) else None
+        if args.product_keyword:
             for order in orders:
-                if ref.product_keyword in order.product.product_name:
+                if args.product_keyword in order.product.product_name:
                     return order
         return orders[0]
 
     async def _resolve_orders(
         self, session: AsyncSession, user: AuthenticatedUser, limit: int = 20
     ) -> list[CustomerOrder]:
-        return list(
-            (
-                await session.execute(
-                    select(CustomerOrder)
-                    .options(selectinload(CustomerOrder.product))
-                    .where(CustomerOrder.user_id == user.user_id)
-                    .order_by(CustomerOrder.created_at.desc())
-                    .limit(limit)
-                )
-            )
-            .scalars()
-            .all()
+        return await self._resolve_orders_by_args(session, user, ListMyOrdersArgs(limit=limit))
+
+    async def _resolve_orders_by_args(
+        self, session: AsyncSession, user: AuthenticatedUser, args: ListMyOrdersArgs
+    ) -> list[CustomerOrder]:
+        query = (
+            select(CustomerOrder)
+            .options(selectinload(CustomerOrder.product))
+            .where(CustomerOrder.user_id == user.user_id)
         )
+        if args.status:
+            query = query.where(CustomerOrder.status == args.status)
+        query = query.order_by(CustomerOrder.created_at.desc()).limit(args.limit)
+        orders = list((await session.execute(query)).scalars().all())
+        if args.product_keyword:
+            return [order for order in orders if args.product_keyword in order.product.product_name]
+        return orders
+
+    def _order_tool_args(self, plan: AgentPlan) -> dict[str, object]:
+        ref = plan.order_reference
+        if ref is None:
+            return {"latest": True}
+        return {
+            "order_no": ref.order_no,
+            "ordinal_index": ref.ordinal_index,
+            "product_keyword": ref.product_keyword,
+            "latest": ref.latest or not any([ref.order_no, ref.ordinal_index is not None, ref.product_keyword]),
+        }
+
+    async def _create_action_request(
+        self,
+        session: AsyncSession,
+        user: AuthenticatedUser,
+        run_id: str,
+        order: CustomerOrder,
+        action_type: str,
+        args: RequestOrderCancellationArgs | RequestRefundArgs,
+    ) -> AgentActionRequest:
+        request = AgentActionRequest(
+            run_id=run_id,
+            action_type=action_type,
+            target_order_id=order.id,
+            action_payload_json=json.dumps({"reason": args.reason}, ensure_ascii=False),
+            risk_level="HIGH",
+            status="PENDING",
+            idempotency_key=f"{action_type}:{order.id}:{user.user_id}:{run_id}",
+            created_by=user.user_id,
+            created_at=datetime.now(),
+        )
+        session.add(request)
+        await session.flush()
+        return request
 
     async def _resolve_product(self, session: AsyncSession, keyword: str) -> ProductCatalog | None:
         return (
@@ -431,26 +488,6 @@ class AgentService:
     def _compact(self, value: str, limit: int = 240) -> str:
         normalized = " ".join(value.split())
         return normalized if len(normalized) <= limit else normalized[: limit - 3] + "..."
-
-    async def _record_tool(
-        self,
-        session: AsyncSession,
-        run_id: str,
-        tool_name: str,
-        arguments: dict[str, object],
-        result_summary: str,
-        success: bool,
-    ) -> None:
-        session.add(
-            AgentToolCall(
-                run_id=run_id,
-                tool_name=tool_name,
-                redacted_arguments_json=json.dumps(arguments, ensure_ascii=False),
-                result_summary=result_summary,
-                success=success,
-                created_at=datetime.now(),
-            )
-        )
 
 
 def _shipment_status(order_status: str) -> str:

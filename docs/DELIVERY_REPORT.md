@@ -1,56 +1,54 @@
 # 交付验证报告
 
-## 1. 本次交付范围
+## 1. 当前交付范围
 
-本项目位于 `smart-customer-service/`，包含：
+本项目位于 `smart-customer-service/`，当前主版本是 Python Agent 客服系统：
 
-- `server/`：Spring Boot 后端源码、Flyway 迁移、自动化测试、Maven Wrapper。
-- `web/`：Vue 3 + TypeScript 前端源码。
-- `deploy/`：Docker Compose、后端/前端 Dockerfile、Nginx 配置、模型检查和下载脚本。
-- `docs/`：迁移报告、面试说明、重构计划和简历描述。
-- `sample-data/knowledge/`：演示知识库 Markdown。
+- `server/`：FastAPI 后端、SQLAlchemy 模型、Alembic 迁移、Agent 服务、RAG 检索、文档 Worker 和自动化测试。
+- `web/`：Vue 3 + TypeScript 前端。
+- `deploy/`：Docker Compose、后端/前端 Dockerfile、Nginx 配置。
+- `docs/`：Python 版本面试说明、迁移说明和交付报告。
+- `legacy/java-server/`：旧 Java 后端源码，仅作迁移参考，不参与当前运行。
 - `.env.example`、`.gitignore`、`README.md`。
 
-## 2. 已验证命令
+## 2. 推荐验证命令
 
 ```powershell
 cd server
-.\mvnw.cmd -q test
-.\mvnw.cmd -q package -DskipTests
+.\.venv\Scripts\python.exe -m ruff check app tests scripts
+.\.venv\Scripts\python.exe -m mypy app tests scripts
+.\.venv\Scripts\python.exe -m pytest
 
 cd ..\web
-npm ci
 npm run build
 
 cd ..
-docker compose -f deploy\docker-compose.yml config
+docker compose -f deploy\docker-compose.yml config --quiet
 ```
 
 ## 3. 当前实现状态
 
-- 已实现真实后端登录、Spring Security 鉴权、JWT Access Token、Redis Refresh Token、退出黑名单。
-- 已实现用户端和管理端角色隔离，前端登录不再是演示状态。
-- 已实现商品、订单、物流轨迹数据模型，用户端可查看订单，管理端可维护订单状态和物流节点。
-- 已实现用户端模拟下单，订单会进入“我的订单”，可继续咨询发货和物流。
-- 已实现管理端数据概览仪表盘，展示今日咨询、订单、工单和知识库状态。
-- 已实现管理端模型参数面板，支持运行时调整 temperature、topK、最低相似度阈值和 Mock ChatModel 开关。
-- 已实现聊天业务优先回答：订单、发货、物流、商品问题优先查询业务表，并支持最近订单、第二个订单、我买的杯子等指代表达，再兜底 RAG。
-- 已实现知识库文档上传、SHA-256 去重、异步任务、文本切片持久化和 Qdrant 写入。
-- 已实现 RAG 检索、低相关拒答、回答来源快照保存。
-- 已实现聊天 Redis 限流，超限请求不会继续调用 Embedding、Qdrant 或大模型。
-- 已实现工单状态机、管理员处理、操作日志和乐观锁并发保护。
-- 已补充 Docker Compose 健康检查、Actuator health/readiness 和 Maven Wrapper。
+- 已实现 JWT Access Token + Redis Refresh Token 登录认证。
+- 已实现用户端和管理端角色隔离。
+- 已实现商品、订单、物流、售后规则、会话、工单和 Agent 审计数据模型。
+- 已实现统一工具执行器，接入角色权限、Pydantic 参数校验、超时、重试、脱敏审计、耗时记录。
+- 已实现订单/物流/商品问题优先查询业务表，知识类问题进入 RAG。
+- 已实现三路混合召回：关键词检索、Dense Vector 检索、结构化业务规则检索。
+- 已实现 RRF 融合和轻量级启发式重排；没有宣传为真实 Cross-Encoder。
+- 已实现 Redis 聊天滑动窗口限流和检索结果短期缓存。
+- 已实现文档任务条件更新抢占、失败重试、next_retry_at、最大重试和 DEAD_LETTER。
+- 已实现 `/liveness` 与 `/readiness`，readiness 检查 MySQL、Redis、Qdrant。
 
 ## 4. 安全说明
 
-- `.env` 已被 `.gitignore` 排除，不会提交到仓库。
-- `.env.example` 只保留占位配置和 Mock 默认值。
-- 真实 API Key 只能放在本地 `.env`，不能写入源码、模板、README、测试文件、日志或交付内容。
-- 当前自动化测试和构建默认可以在 Mock ChatModel 下完成；真实大模型调用需要本地提供有效 `LLM_API_KEY` 后再验证。
+- `.env` 已被 `.gitignore` 排除，不提交仓库。
+- `.env.example` 默认不填写 `LLM_API_KEY`，并启用 Mock 模式。
+- 真实 API Key 只能放在本地 `.env`，不能写入源码、模板、README、测试文件、日志或交付压缩包。
 
 ## 5. 尚未完成的生产级能力
 
-- 未补齐完整 Testcontainers 集成测试。
-- 未接入 WireMock 外部服务契约测试。
-- 未实现生产级密钥管理、审计系统、多租户和消息推送。
-- 未接入真实订单、支付、物流系统。
+- 未接入真实 Embedding 模型，默认 MockEmbedding 只用于链路验证。
+- 未接入真实 Cross-Encoder/Reranker。
+- 未实现 LLM 结构化规划，目前以确定性规则路由为主。
+- 未接入真实支付、物流、订单系统。
+- 未做完整压测、链路追踪和生产级密钥管理。
