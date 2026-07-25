@@ -6,7 +6,7 @@ class MockEmbeddingClient:
     def __init__(self, dimension: int) -> None:
         self.dimension = dimension
 
-    def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str) -> list[float]:
         values: list[float] = []
         seed = text.encode("utf-8")
         counter = 0

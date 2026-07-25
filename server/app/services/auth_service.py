@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import UnauthorizedError
-from app.core.security import create_access_token, create_access_token_claims, verify_password
+from app.core.security import create_access_token, create_access_token_claims, hash_password, verify_password
 from app.db.models import UserAccount
 from app.schemas.auth import AuthTokenResponse, AuthUserResponse
 from app.services.refresh_token_service import RefreshTokenRecord, refresh_token_service
@@ -79,7 +79,7 @@ class AuthService:
         if user is None:
             user = UserAccount(
                 username=username,
-                password_hash=password,
+                        password_hash=hash_password(password),
                 display_name=display_name,
                 role=role,
                 status="ACTIVE",

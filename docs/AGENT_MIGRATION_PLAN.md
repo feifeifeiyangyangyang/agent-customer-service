@@ -4,7 +4,7 @@
 
 当前项目已经从旧 Java 后端迁移为 Python FastAPI 主版本，定位为：
 
-**Smart Support System：电商智能客服与人工工单协同平台**
+**智服通：基于受控 LLM Workflow 的电商售后智能处置与人工协同平台**
 
 迁移目标不是做一个只会聊天的 RAG Demo，而是围绕商品、订单、物流、售后规则、人工工单和审批请求形成可审计闭环。
 
@@ -20,16 +20,16 @@
 
 - 认证：JWT Access Token + Redis Refresh Token。
 - 业务：商品、订单、物流、售后规则、工单。
-- Agent：确定性路由、统一工具执行器、高风险审批请求、运行步骤和工具调用审计。
+- Workflow：输入守卫、LLM/规则结构化规划、策略校验、统一工具执行器、高风险审批请求、运行步骤和工具调用审计。
 - RAG：关键词检索、Dense Vector 检索、结构化规则检索、RRF 融合、启发式重排。
 - 文档：上传、解析、切片、任务表异步处理、Qdrant 写入、失败重试。
 - 运维：Docker Compose、liveness/readiness、Redis 限流和检索缓存。
 
 ## 真实边界
 
-- 当前没有完整 LLM Planner，规划主要是确定性规则路由。
-- 当前 LangGraph 只做 response guard graph。
-- 当前 Dense Vector 默认是 MockEmbedding，不代表真实语义 Embedding。
+- LLM 节点只负责结构化规划候选和基于证据的回答生成；核心业务约束由确定性代码控制。
+- 当前 LangGraph 是轻量受控 Workflow 骨架，业务工具和数据库写入由服务层执行。
+- Dense Vector 默认是 MockEmbedding，不代表真实语义 Embedding；非 Mock 模式走 OpenAI Compatible Embedding。
 - 当前重排是启发式算法，不是真实 Cross-Encoder。
 
 ## 安全要求

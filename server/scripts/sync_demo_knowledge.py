@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 from app.core.config import settings
 from app.db.models import KbChunk, KbDocument
 from app.db.session import dispose_engine, session_factory
-from app.embeddings.mock_embedding import MockEmbeddingClient
+from app.embeddings import create_embedding_client
 from app.rag.chunker import chunk_text
 from app.repositories.qdrant_store import VectorChunkPayload, qdrant_store
 
@@ -173,7 +173,7 @@ async def sync_document(filename: str, content: str) -> None:
 
         await session.execute(delete(KbChunk).where(KbChunk.document_id == document.id))
         chunks = chunk_text(content, max_chars=900, overlap=120)
-        embedding = MockEmbeddingClient(settings.embedding_dimension)
+        embedding = create_embedding_client()
         vector_rows = []
         for chunk in chunks:
             point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"kb:{document.id}:{chunk.index}:{chunk.content_hash}"))
@@ -195,7 +195,7 @@ async def sync_document(filename: str, content: str) -> None:
             [
                 (
                     point_id,
-                    embedding.embed(row.content),
+                    await embedding.embed(row.content),
                     VectorChunkPayload(
                         document_id=document.id,
                         chunk_id=row.id,

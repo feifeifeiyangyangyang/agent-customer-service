@@ -9,8 +9,8 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agent.graph import run_response_guard_graph
-from app.agent.routing import build_rule_based_plan
+from app.agent.graph import input_guard, run_response_guard_graph
+from app.agent.planner import build_agent_plan
 from app.agent.tools.executor import tool_executor
 from app.agent.tools.registry import (
     GetOrderDetailArgs,
@@ -18,6 +18,7 @@ from app.agent.tools.registry import (
     RequestOrderCancellationArgs,
     RequestRefundArgs,
 )
+from app.core.config import settings
 from app.core.security import AuthenticatedUser
 from app.db.models import (
     AgentActionRequest,
@@ -30,10 +31,12 @@ from app.db.models import (
     KbDocument,
     ProductCatalog,
 )
+from app.llm import LLMProviderError, create_llm_client
 from app.schemas.agent import AgentPlan
 from app.schemas.chat import ChatResponse, SourceReference
-from app.schemas.retrieval import RetrievalCandidate, RetrievalQueryContext
+from app.schemas.retrieval import RetrievalCandidate, RetrievalQueryContext, RetrievalResult
 from app.services.knowledge_service import knowledge_service
+from app.services.model_runtime_config_service import model_runtime_config_service
 
 
 class AgentService:
@@ -47,8 +50,69 @@ class AgentService:
         now = datetime.now()
         run_id = "run_" + uuid4().hex
         effective_question = await self._resolve_conversation_context(session, conversation_id, question)
-        plan = build_rule_based_plan(effective_question)
+        runtime = await model_runtime_config_service.get_effective(session)
         session.add(ChatMessage(conversation_id=conversation_id, role="USER", content=question, created_at=now))
+        guard_state = input_guard(
+            {
+                "run_id": run_id,
+                "conversation_id": conversation_id,
+                "authenticated_user_id": user.user_id,
+                "user_role": user.role,
+                "user_goal": effective_question,
+                "risk_level": "LOW",
+            }
+        )
+        if guard_state.get("risk_level") == "FORBIDDEN":
+            final_answer = "这个请求可能涉及越权或不安全操作，我不能直接执行，建议转人工处理。"
+            session.add(
+                AgentRun(
+                    run_id=run_id,
+                    thread_id=f"conversation-{conversation_id}",
+                    conversation_id=conversation_id,
+                    user_id=user.user_id,
+                    status="BLOCKED",
+                    intent="CLARIFICATION",
+                    risk_level="FORBIDDEN",
+                    started_at=now,
+                    completed_at=datetime.now(),
+                    final_answer=final_answer,
+                    request_id=uuid4().hex,
+                    model_name=self._runtime_model_name(runtime),
+                    config_version=self._runtime_config_version(runtime),
+                    prompt_version="controlled-workflow-v1",
+                )
+            )
+            self._record_step(
+                session,
+                run_id,
+                "input_guard",
+                self._compact(effective_question),
+                str(guard_state.get("decision_reason", "forbidden")),
+                "BLOCKED",
+            )
+            session.add(
+                ChatMessage(
+                    conversation_id=conversation_id,
+                    role="ASSISTANT",
+                    content=final_answer,
+                    sources_json=json.dumps({"sources": []}, ensure_ascii=False),
+                    retrieval_score=Decimal("0"),
+                    confidence_level="LOW",
+                    need_human=True,
+                    created_at=datetime.now(),
+                )
+            )
+            await session.commit()
+            return ChatResponse(
+                conversationId=conversation_id,
+                answer=final_answer,
+                sources=[],
+                retrievalScore=0,
+                confidenceLevel="LOW",
+                needHuman=True,
+            )
+
+        plan = await build_agent_plan(session, effective_question)
         session.add(
             AgentRun(
                 run_id=run_id,
@@ -60,13 +124,16 @@ class AgentService:
                 risk_level=plan.risk_level,
                 started_at=now,
                 request_id=uuid4().hex,
+                model_name=self._runtime_model_name(runtime),
+                config_version=self._runtime_config_version(runtime),
+                prompt_version="controlled-workflow-v1",
             )
         )
         await session.flush()
         self._record_step(
             session,
             run_id,
-            "intent_router",
+            "planner",
             self._compact(effective_question),
             f"intent={plan.intent}, risk={plan.risk_level}",
             "COMPLETED",
@@ -87,7 +154,7 @@ class AgentService:
             f"confidence={answer_response.confidenceLevel}, need_human={answer_response.needHuman}",
             "COMPLETED",
         )
-        answer = answer_response.answer
+        answer = await self._polish_answer_with_llm(session, effective_question, answer_response.answer)
         state = run_response_guard_graph(
             {
                 "run_id": run_id,
@@ -135,6 +202,17 @@ class AgentService:
             confidenceLevel=answer_response.confidenceLevel,
             needHuman=answer_response.needHuman,
         )
+
+    async def _polish_answer_with_llm(self, session: AsyncSession, question: str, draft_answer: str) -> str:
+        runtime = await model_runtime_config_service.get_effective(session)
+        client = create_llm_client(runtime)
+        try:
+            grounded = await client.answer(question, "", draft_answer)
+        except LLMProviderError:
+            return draft_answer
+        if grounded is None:
+            return draft_answer
+        return grounded.answer or draft_answer
 
     async def _resolve_conversation_context(self, session: AsyncSession, conversation_id: int, question: str) -> str:
         if re.search(r"ORD[0-9A-Z]{8,}", question, flags=re.IGNORECASE):
@@ -379,25 +457,26 @@ class AgentService:
                     sources=await self._product_sources(session, product),
                 )
         retrieval_context = await self._build_retrieval_context(session, user, plan)
-        candidates = cast(list[RetrievalCandidate], await tool_executor.execute(
+        retrieval_result = cast(RetrievalResult, await tool_executor.execute(
             session,
             run_id,
             user,
             "search_knowledge_base",
             {"query": question, "limit": 5},
-            lambda args: knowledge_service.retrieve(
+            lambda args: knowledge_service.retrieve_with_diagnostics(
                 session,
                 args.query,
                 limit=args.limit,
                 context=retrieval_context,
             ),
-            lambda resolved: f"resolved {len(resolved)} retrieval candidates",
+            lambda resolved: f"resolved {len(resolved.candidates)} retrieval candidates",
         ))
-        self._record_retrieval_trace(session, run_id, candidates, knowledge_service.last_diagnostics)
-        sources = self._source_references(candidates, question)
+        candidates = retrieval_result.candidates
+        self._record_retrieval_trace(session, run_id, candidates, retrieval_result.diagnostics)
+        order_for_answer = await self._resolve_order(session, user, plan) if plan.order_reference else None
+        sources = self._source_references(candidates, question, order_for_answer)
         if candidates:
             best = candidates[0]
-            order_for_answer = await self._resolve_order(session, user, plan) if plan.order_reference else None
             return ChatResponse(
                 conversationId=conversation_id,
                 answer=self._knowledge_answer(candidates, order_for_answer, question),
@@ -485,6 +564,20 @@ class AgentService:
         action_type: str,
         args: RequestOrderCancellationArgs | RequestRefundArgs,
     ) -> AgentActionRequest:
+        today = datetime.now().strftime("%Y%m%d")
+        idempotency_key = f"{action_type}:{order.id}:{user.user_id}:{today}"
+        existing = (
+            await session.execute(
+                select(AgentActionRequest).where(
+                    AgentActionRequest.action_type == action_type,
+                    AgentActionRequest.target_order_id == order.id,
+                    AgentActionRequest.created_by == user.user_id,
+                    AgentActionRequest.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
         request = AgentActionRequest(
             run_id=run_id,
             action_type=action_type,
@@ -492,7 +585,7 @@ class AgentService:
             action_payload_json=json.dumps({"reason": args.reason}, ensure_ascii=False),
             risk_level="HIGH",
             status="PENDING",
-            idempotency_key=f"{action_type}:{order.id}:{user.user_id}:{run_id}",
+            idempotency_key=idempotency_key,
             created_by=user.user_id,
             created_at=datetime.now(),
         )
@@ -647,7 +740,12 @@ class AgentService:
             "OFF_SHELF": "下架",
         }.get(status, status)
 
-    def _source_references(self, candidates: list[RetrievalCandidate], question: str = "") -> list[SourceReference]:
+    def _source_references(
+        self,
+        candidates: list[RetrievalCandidate],
+        question: str = "",
+        order: CustomerOrder | None = None,
+    ) -> list[SourceReference]:
         sources: list[SourceReference] = []
         for candidate in candidates:
             if candidate.source_type == "structured_rule":
@@ -663,7 +761,7 @@ class AgentService:
             if candidate.document_id is None:
                 continue
             file_name = str(candidate.metadata.get("file_name", "knowledge"))
-            if not self._source_matches_question(file_name, question):
+            if not self._source_matches_question(file_name, question, order):
                 continue
             sources.append(
                 SourceReference(
@@ -683,17 +781,11 @@ class AgentService:
     ) -> str:
         structured = [candidate for candidate in candidates if candidate.source_type == "structured_rule"]
         if order is not None and self._is_after_sale_rule_question(question):
-            product_rule = self._customer_after_sale_lead(order)
-            if structured:
-                return f"{product_rule}{structured[0].content}"
-            if candidates:
-                candidate = self._best_customer_candidate(candidates, question)
-                return f"{product_rule}{self._knowledge_excerpt(candidate.content)}"
-            return product_rule
+            return self._customer_after_sale_answer(order, question, structured[0].content if structured else None)
         if structured:
             rule = structured[0]
             return rule.content
-        return self._knowledge_excerpt(self._best_customer_candidate(candidates, question).content)
+        return self._customer_knowledge_answer(candidates, question)
 
     def _is_after_sale_rule_question(self, question: str) -> bool:
         terms = ["退货", "退款", "退钱", "售后", "破损", "损坏", "包装", "拆封", "换货", "能不能退", "怎么退"]
@@ -705,6 +797,88 @@ class AgentService:
     def _customer_after_sale_lead(self, order: CustomerOrder) -> str:
         product_rule = self._clean_sentence(order.product.after_sale_rule)
         return f"您这单是「{order.product.product_name}」。{product_rule}。"
+
+    def _customer_after_sale_answer(
+        self,
+        order: CustomerOrder,
+        question: str,
+        structured_content: str | None = None,
+    ) -> str:
+        product_name = order.product.product_name
+        product_rule = self._clean_sentence(order.product.after_sale_rule)
+        normalized = question.strip()
+
+        if any(term in normalized for term in ["破损", "损坏", "包装", "坏了", "质量", "裂", "漏"]):
+            return (
+                f"您这单是「{product_name}」。如果收到商品破损，请先保留商品、外包装和快递面单，"
+                "再拍摄清晰照片或视频作为凭证。"
+                f"{product_rule}。如果破损影响使用，可以提交售后申请；"
+                "凭证不足、责任不清或包装损坏比较严重时，建议转人工复核。"
+            )
+
+        if any(term in normalized for term in ["退款", "退钱", "钱退", "到账"]):
+            return (
+                f"您这单是「{product_name}」。如果您想退款，需要先确认订单状态、退货原因和商品情况。"
+                f"{product_rule}。审核通过后通常会按原支付路径退款；"
+                "如果订单已签收，一般需要先完成退货或售后审核，再进入退款处理。"
+            )
+
+        if "换货" in normalized:
+            return (
+                f"您这单是「{product_name}」。如果是质量问题、收到破损或无法正常使用，可以提交换货或补发售后申请。"
+                "建议先准备问题照片或视频，方便客服审核。"
+                f"{product_rule}。"
+            )
+
+        if any(term in normalized for term in ["拆封", "打开", "开封"]):
+            return (
+                f"您这单是「{product_name}」。拆封不一定等于不能退，关键要看是否影响二次销售。"
+                f"{product_rule}。如果商品未明显使用、配件齐全且包装没有严重损坏，可以提交退货申请；"
+                "如果已经清洗、明显使用或包装严重破损，建议转人工复核。"
+            )
+
+        if structured_content:
+            customer_rule = self._customer_policy_summary(structured_content, normalized)
+            if customer_rule:
+                return f"您这单是「{product_name}」。{product_rule}。{customer_rule}"
+
+        return (
+            f"您这单是「{product_name}」。{product_rule}。"
+            "如果您要退货或退款，可以继续补充商品是否拆封、是否使用、包装是否完整，"
+            "我会先帮您判断是否适合直接提交售后申请。"
+        )
+
+    def _customer_knowledge_answer(self, candidates: list[RetrievalCandidate], question: str) -> str:
+        normalized = question.strip()
+        if any(term in normalized for term in ["破损", "损坏", "包装", "坏了", "质量", "裂", "漏"]):
+            return (
+                "收到商品破损时，请先保留商品、外包装和快递面单，并拍摄清晰照片或视频。"
+                "如果破损影响使用，可以提交售后申请；凭证不足或情况复杂时，建议转人工复核。"
+            )
+        if any(term in normalized for term in ["退款", "退钱", "钱退", "到账"]):
+            return (
+                "退款通常会按原支付路径退回。未发货订单一般先提交退款申请，审核通过后进入退款处理；"
+                "已发货或已签收订单通常需要先完成拒收、退货或售后审核，再处理退款。"
+            )
+        if any(term in normalized for term in ["退货", "拆封", "换货", "怎么退", "能不能退"]):
+            return (
+                "退货主要看商品是否影响二次销售。商品未明显使用、配件齐全、包装没有严重损坏时，"
+                "通常可以提交退货申请；质量问题或收到破损时，可以按售后流程申请换货、补发或人工复核。"
+            )
+        return self._knowledge_excerpt(self._best_customer_candidate(candidates, question).content)
+
+    def _customer_policy_summary(self, content: str, question: str) -> str:
+        if any(term in question for term in ["退款", "退钱", "钱退", "到账"]):
+            return (
+                "审核通过后通常会按原支付路径退款；如果订单已发货或已签收，"
+                "一般需要先完成拒收、退货或售后审核。"
+            )
+        if any(term in question for term in ["破损", "损坏", "包装", "坏了", "质量"]):
+            return "如果商品破损影响使用，请准备照片或视频凭证后提交售后申请。"
+        if any(term in question for term in ["退货", "拆封", "换货", "怎么退", "能不能退"]):
+            return "退货时主要核对商品是否明显使用、配件是否齐全，以及包装是否严重损坏。"
+        excerpt = self._knowledge_excerpt(content, max_chars=120)
+        return excerpt
 
     def _best_customer_candidate(
         self,
@@ -729,14 +903,31 @@ class AgentService:
         lines = []
         for line in content.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
             clean = line.strip().lstrip("#").strip()
-            if not clean or clean.startswith("本文件用于演示"):
+            if (
+                not clean
+                or clean.startswith("本文件用于演示")
+                or "不建议客服承诺" in clean
+                or "演示规则" in clean
+            ):
                 continue
             lines.append(clean)
         return " ".join(lines)[:max_chars]
 
-    def _source_matches_question(self, file_name: str, question: str) -> bool:
+    def _source_matches_question(
+        self,
+        file_name: str,
+        question: str,
+        order: CustomerOrder | None = None,
+    ) -> bool:
         if not file_name.startswith("商品资料-"):
             return True
+        if order is not None:
+            file_product_code = self._product_code_from_source_name(file_name)
+            if file_product_code is not None:
+                return file_product_code == order.product.product_code
+            compact_name = order.product.product_name.replace(" ", "")
+            compact_file = file_name.replace(" ", "")
+            return order.product.product_code in file_name or compact_name in compact_file
         upper_question = question.upper()
         if any(term in question for term in ["洗脸巾", "洗面巾", "洁面巾"]) or "C20" in upper_question:
             return "C20" in file_name or "洗面巾" in file_name
@@ -745,6 +936,13 @@ class AgentService:
         if any(term in question for term in ["靠枕", "枕头"]) or "P9" in upper_question:
             return "P9" in file_name or "靠枕" in file_name
         return True
+
+    def _product_code_from_source_name(self, file_name: str) -> str | None:
+        upper = file_name.upper()
+        for code in ["H100", "C20", "P9"]:
+            if code in upper:
+                return code
+        return None
 
     def _record_retrieval_trace(
         self,
@@ -843,6 +1041,17 @@ class AgentService:
     def _compact(self, value: str, limit: int = 240) -> str:
         normalized = " ".join(value.split())
         return normalized if len(normalized) <= limit else normalized[: limit - 3] + "..."
+
+    def _runtime_model_name(self, runtime: object) -> str:
+        return "mock-llm" if getattr(runtime, "mock_enabled", True) else settings.llm_model_name
+
+    def _runtime_config_version(self, runtime: object) -> str:
+        return (
+            f"temperature={getattr(runtime, 'temperature', None)};"
+            f"top_k={getattr(runtime, 'top_k', None)};"
+            f"min_score={getattr(runtime, 'min_retrieval_score', None)};"
+            f"mock={getattr(runtime, 'mock_enabled', None)}"
+        )
 
 
 def _shipment_status(order_status: str) -> str:

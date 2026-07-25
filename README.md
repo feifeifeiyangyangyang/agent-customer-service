@@ -1,8 +1,8 @@
 # Smart Support System
 
-智服通 Agent 是一个面向电商售后场景的企业知识库客服与人工工单协同平台。
+智服通是一个面向电商售后场景的企业知识库客服与人工工单协同平台。
 
-当前主版本已经不是原来的 Java Spring Boot 项目，而是重构后的 **Python FastAPI + Vue + Agent/RAG** 项目。旧 Java 后端已移动到 `legacy/java-server/`，仅作为迁移参考，不参与当前运行和部署。
+当前主版本定位为 **基于受控 LLM Workflow 的电商售后智能处置与人工协同平台**。它不是多 Agent 系统，也不允许大模型自由执行高风险操作；核心链路采用确定性业务工作流 + 受控 LLM 节点 + 三路混合检索 + Tool Use + Human-in-the-loop 审批。
 
 ## 与旧 Java 版本的区别
 
@@ -11,7 +11,7 @@
 | 后端技术栈 | Java Spring Boot | Python FastAPI |
 | 数据访问 | Java ORM / Mapper 风格 | SQLAlchemy 2.x Async ORM |
 | 数据迁移 | Flyway SQL | Alembic |
-| 智能客服 | 偏规则和普通知识库问答 | Agent 路由 + 工具调用 + RAG |
+| 智能客服 | 偏规则和普通知识库问答 | 受控 LLM Workflow + 工具调用 + RAG |
 | 鉴权 | 演示/基础鉴权 | Access JWT + Redis Refresh Token |
 | 知识库检索 | 基础关键词/向量思路 | 三路混合召回 + RRF + rerank |
 | 高风险操作 | 普通业务接口 | 取消订单、退款必须进入管理员审批 |
@@ -44,7 +44,7 @@ legacy/java-server/
 三路召回不是把 RRF、rerank 或 metadata filter 包装成检索通道，而是三条独立召回链路：
 
 - 关键词检索：基于 MySQL 知识库 chunk 的关键词匹配，适合政策术语、商品名、时间限制等精确匹配。
-- Dense Vector 检索：当前默认使用 `MockEmbeddingClient` + Qdrant，适合验证向量库写入、召回链路和容错；如需真实语义效果，需要接入真实 Embedding 模型或服务。
+- Dense Vector 检索：默认使用 `MockEmbeddingClient` + Qdrant 验证向量库链路；关闭 `EMBEDDING_MOCK_ENABLED` 并配置 OpenAI Compatible Embedding 后，才具备真实语义检索能力。
 - 结构化规则检索：基于售后规则表，根据商品分类、订单状态、发货/签收状态、签收天数、售后类型、规则版本和有效期筛选规则。
 
 结构化规则相关表：
@@ -63,17 +63,22 @@ agent_retrieval_trace
 
 当通用文档和结构化业务规则冲突时，系统优先采用当前有效的结构化业务规则；如果冲突无法自动判断，应转人工处理。
 
-## Agent 与可靠性边界
+## 受控 LLM Workflow 与可靠性边界
 
-当前 Agent 链路不是“让大模型自由决定并直接改库”，而是：
+当前链路不是“让大模型自由决定并直接改库”，而是：
 
 ```text
 输入安全检查
-→ 确定性规则路由
-→ 统一工具执行器
-→ 业务表 / RAG / 审批请求
-→ LangGraph 响应安全守卫图
+→ 上下文补全
+→ LLM/规则结构化规划
+→ 策略二次校验
+→ 统一工具执行器 / RAG / 审批申请
+→ 基于证据的回答生成
+→ 输出安全检查
+→ 审计收口
 ```
+
+LLM 只用于结构化规划候选和基于证据的回答生成。身份权限、订单归属、订单状态机、退款/取消前置条件、幂等控制、管理员审批、库存回补、数据库写入和审计记录都由确定性代码控制。
 
 统一工具执行器会读取 `TOOL_REGISTRY` 中的工具策略，执行角色校验、Pydantic 参数校验、超时、重试、参数脱敏、耗时统计和 `agent_tool_call` 审计记录。取消订单、退款等高风险工具只创建审批请求，不由模型直接修改订单状态。
 
@@ -212,6 +217,7 @@ npm run dev
 LLM_MOCK_ENABLED=true
 EMBEDDING_MOCK_ENABLED=true
 LLM_API_KEY=
+EMBEDDING_API_KEY=
 ```
 
 如需接入 DeepSeek 或其他 OpenAI Compatible 模型，只能把真实 Key 写入本地 `.env`：
@@ -221,6 +227,16 @@ LLM_MOCK_ENABLED=false
 LLM_API_KEY=
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL_NAME=deepseek-v4-flash
+```
+
+如需真实语义 Embedding：
+
+```text
+EMBEDDING_MOCK_ENABLED=false
+EMBEDDING_API_KEY=
+EMBEDDING_BASE_URL=https://api.openai.com
+EMBEDDING_MODEL_NAME=text-embedding-3-small
+EMBEDDING_DIMENSION=384
 ```
 
 安全要求：
@@ -273,8 +289,8 @@ docker compose -f deploy/docker-compose.yml config --quiet
 ## 适合面试讲解的亮点
 
 - 从旧 Java 项目迁移为 Python Agent 后端，体现重构和架构演进能力。
-- 把普通客服问答升级为 Agent：意图识别、工具调用、风险控制、审批流、审计记录。
+- 把普通客服问答升级为受控 LLM Workflow：结构化规划、工具调用、风险控制、审批流、审计记录。
 - RAG 不只是向量库查询，而是关键词、Dense Vector、结构化规则三路独立召回。
-- 高风险业务动作采用“模型生成申请，管理员审批执行”的安全闭环。
+- 高风险业务动作采用“Workflow 创建申请，管理员审批执行”的安全闭环，模型不能直接改库。
 - 登录鉴权使用 Access JWT + Redis Refresh Token，而不是前端演示登录。
 - 每次 Agent 运行都有可追踪记录，便于排查回答依据和工具调用过程。

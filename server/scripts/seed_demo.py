@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import hash_password
 from app.db.models import (
     AfterSaleRule,
     AfterSaleRuleCondition,
@@ -36,7 +37,7 @@ async def main() -> None:
                 session.add(
                     UserAccount(
                         username=username,
-                        password_hash=password,
+                        password_hash=hash_password(password),
                         display_name=name,
                         role=role,
                         status="ACTIVE",
@@ -44,6 +45,9 @@ async def main() -> None:
                         updated_at=datetime.now(),
                     )
                 )
+            elif existing_user.password_hash == password or not existing_user.password_hash.startswith("$2"):
+                existing_user.password_hash = hash_password(password)
+                existing_user.updated_at = datetime.now()
         await session.flush()
         products = [
             (

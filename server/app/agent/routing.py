@@ -157,10 +157,10 @@ def _is_refund_action_request(question: str, order_ref: OrderReference | None) -
     if not any(word in question for word in ["退款", "退钱"]):
         return False
     policy_words = ["如何", "怎么", "流程", "多久", "几天", "一般", "规则", "说明", "方式"]
-    if any(word in question for word in policy_words) and order_ref is None:
+    explicit_action_words = ["我要", "想要", "不想要", "帮我", "申请", "办理", "退一下", "给我退", "这单"]
+    if any(word in question for word in policy_words) and not any(word in question for word in explicit_action_words):
         return False
-    action_words = ["我要", "想要", "不想要", "帮我", "申请", "办理", "退一下", "给我退", "这单", "订单"]
-    return order_ref is not None or any(word in question for word in action_words)
+    return order_ref is not None or any(word in question for word in explicit_action_words)
 
 
 def _is_after_sale_policy_query(question: str) -> bool:

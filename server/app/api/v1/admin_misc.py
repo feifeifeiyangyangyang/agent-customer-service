@@ -17,6 +17,7 @@ from app.db.models import (
     SupportTicket,
 )
 from app.db.session import get_session
+from app.schemas.admin_agent import ModelConfigRequest
 from app.schemas.common import ApiResponse
 
 router = APIRouter(tags=["admin-misc"])
@@ -136,7 +137,7 @@ async def get_model_config(
 
 @router.put("/admin/model-config")
 async def update_model_config(
-    request: dict[str, object],
+    request: ModelConfigRequest,
     _admin: AuthenticatedUser = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResponse[dict[str, object]]:
@@ -151,13 +152,10 @@ async def update_model_config(
             updated_at=datetime.now(),
         )
         session.add(row)
-    temperature_value = request.get("temperature", row.temperature)
-    top_k_value = request.get("topK", row.top_k)
-    min_score_value = request.get("minRetrievalScore", row.min_retrieval_score)
-    row.temperature = Decimal(str(temperature_value))
-    row.top_k = int(top_k_value) if isinstance(top_k_value, int | str) else row.top_k
-    row.min_retrieval_score = Decimal(str(min_score_value))
-    row.mock_enabled = bool(request.get("mockEnabled", row.mock_enabled))
+    row.temperature = Decimal(str(request.temperature))
+    row.top_k = request.topK
+    row.min_retrieval_score = Decimal(str(request.minRetrievalScore))
+    row.mock_enabled = request.mockEnabled
     row.updated_at = datetime.now()
     await session.commit()
     return await get_model_config(_admin, session)

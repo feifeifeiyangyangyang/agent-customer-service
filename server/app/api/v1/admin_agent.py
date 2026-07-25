@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError, NotFoundError
@@ -88,6 +88,12 @@ def run_response(row: AgentRun, tool_call_count: int = 0, pending_action_count: 
         finalAnswer=row.final_answer,
         errorType=row.error_type,
         requestId=row.request_id,
+        modelName=row.model_name,
+        configVersion=row.config_version,
+        promptVersion=row.prompt_version,
+        providerLatencyMs=row.provider_latency_ms,
+        promptTokens=row.prompt_tokens,
+        completionTokens=row.completion_tokens,
         toolCallCount=tool_call_count,
         pendingActionCount=pending_action_count,
     )
@@ -249,6 +255,19 @@ async def approve_action(
     except ActionExecutionError as exc:
         raise AppError(str(exc), 409) from exc
 
+    claim_result = await session.execute(
+        update(AgentActionRequest)
+        .where(
+            AgentActionRequest.id == action_id,
+            AgentActionRequest.status == "PENDING",
+            AgentActionRequest.lock_version == request.lockVersion,
+        )
+        .values(status="APPROVING", lock_version=AgentActionRequest.lock_version + 1)
+    )
+    if claim_result.rowcount != 1:
+        raise AppError("审批记录已被其他人修改", 409)
+    await session.refresh(row)
+
     now = datetime.now()
     order.status = transition.next_status
     order.updated_at = now
@@ -263,7 +282,6 @@ async def approve_action(
     row.approval_note = _merge_approval_note(request.approvalNote, transition.summary)
     row.approved_at = now
     row.executed_at = now
-    row.lock_version += 1
     await session.commit()
     await session.refresh(row)
     return ApiResponse.ok(action_response(row))
@@ -283,11 +301,24 @@ async def reject_action(
         raise AppError("审批记录已被其他人修改", 409)
     if row.status != "PENDING":
         raise AppError("该请求不是待审批状态，不能重复审批", 409)
+
+    claim_result = await session.execute(
+        update(AgentActionRequest)
+        .where(
+            AgentActionRequest.id == action_id,
+            AgentActionRequest.status == "PENDING",
+            AgentActionRequest.lock_version == request.lockVersion,
+        )
+        .values(status="REJECTING", lock_version=AgentActionRequest.lock_version + 1)
+    )
+    if claim_result.rowcount != 1:
+        raise AppError("审批记录已被其他人修改", 409)
+    await session.refresh(row)
+
     row.status = "REJECTED"
     row.approved_by = admin.user_id
     row.approval_note = request.approvalNote
     row.approved_at = datetime.now()
-    row.lock_version += 1
     await session.commit()
     await session.refresh(row)
     return ApiResponse.ok(action_response(row))

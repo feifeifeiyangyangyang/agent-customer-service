@@ -6,7 +6,7 @@
 
 ## 2. 为什么不是完全交给大模型？
 
-客服系统里很多问题必须查业务状态，例如订单是否发货、是否签收、是否超过售后期。项目采用“规则安全层 + 确定性路由 + 工具执行器 + RAG”的方式，让订单、退款、取消订单等操作走受控工具，而不是让大模型直接决定和改库。
+客服系统里很多问题必须查业务状态，例如订单是否发货、是否签收、是否超过售后期。项目采用“输入守卫 + LLM/规则结构化规划 + 策略二次校验 + 工具执行器 + RAG”的方式，让订单、退款、取消订单等操作走受控工具，而不是让大模型直接决定和改库。
 
 ## 3. Tool Calling 做到了什么？
 
@@ -16,7 +16,7 @@
 
 ## 4. LangGraph 在项目里承担什么？
 
-当前 LangGraph 只用于输入安全检查和响应收口，是一个小型 response guard graph。它不是完整 Agent 工作流编排。面试时可以如实说：LangGraph 目前用于图节点抽象安全守卫，主业务执行仍由 FastAPI 服务层和工具执行器完成。
+当前 LangGraph 用于受控 Workflow 的输入守卫和响应收口，主业务执行仍由 FastAPI 服务层和工具执行器完成。面试时不要说成多 Agent 协作，也不要说模型能自由执行工具。
 
 代码路径：`server/app/agent/graph.py`
 
@@ -25,7 +25,7 @@
 RAG 使用三路独立召回：
 
 - 关键词检索：MySQL chunk 关键词匹配。
-- Dense Vector 检索：MockEmbedding + Qdrant，主要验证向量召回链路。
+- Dense Vector 检索：默认 MockEmbedding + Qdrant，主要验证向量召回链路；非 Mock 模式支持 OpenAI Compatible Embedding。
 - 结构化规则检索：根据订单状态、商品分类、签收天数、售后类型、规则版本和有效期筛选规则。
 
 之后用 RRF 融合，再做轻量级启发式重排。当前没有真实 Cross-Encoder。
@@ -50,7 +50,7 @@ Worker 通过条件更新把任务从 `PENDING` 抢占为 `PROCESSING`，检查�
 
 ## 8. 健康检查如何设计？
 
-`/liveness` 只表示进程存活；`/readiness` 检查 MySQL、Redis 和 Qdrant。依赖不可用时 readiness 返回 `DEGRADED`，方便部署平台判断是否接流量。
+`/liveness` 只表示进程存活；`/readiness` 检查 MySQL、Redis 和 Qdrant。依赖不可用时 readiness 返回 503，方便部署平台判断是否接流量。
 
 代码路径：`server/app/api/v1/health.py`
 
@@ -58,5 +58,5 @@ Worker 通过条件更新把任务从 `PENDING` 抢占为 `PROCESSING`，检查�
 
 - 默认向量是 MockEmbedding，不是真实语义模型。
 - 重排是启发式重排，不是真实 Cross-Encoder。
-- LangGraph 不是完整工作流编排。
-- 规划是确定性规则路由，不是完整 LLM Planner。
+- LangGraph 不是多 Agent 编排。
+- LLM 规划只是候选计划，必须经过确定性策略层二次校验。

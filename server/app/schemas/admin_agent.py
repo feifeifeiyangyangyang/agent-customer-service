@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AgentActionResponse(BaseModel):
@@ -59,6 +59,12 @@ class AgentRunResponse(BaseModel):
     finalAnswer: str | None
     errorType: str | None
     requestId: str
+    modelName: str | None = None
+    configVersion: str | None = None
+    promptVersion: str | None = None
+    providerLatencyMs: int | None = None
+    promptTokens: int | None = None
+    completionTokens: int | None = None
     toolCallCount: int = 0
     pendingActionCount: int = 0
 
@@ -78,3 +84,10 @@ class ApproveActionRequest(BaseModel):
 class RejectActionRequest(BaseModel):
     lockVersion: int
     approvalNote: str
+
+
+class ModelConfigRequest(BaseModel):
+    temperature: float = Field(ge=0, le=2)
+    topK: int = Field(ge=1, le=20)
+    minRetrievalScore: float = Field(ge=0, le=1)
+    mockEnabled: bool

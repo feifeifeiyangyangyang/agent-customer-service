@@ -1,6 +1,8 @@
 import logging
+from typing import Any
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.db.session import session_factory
@@ -17,19 +19,24 @@ async def liveness() -> ApiResponse[dict[str, str]]:
     return ApiResponse.ok({"status": "UP"})
 
 
-@router.get("/readiness")
-async def readiness() -> ApiResponse[dict[str, object]]:
+@router.get("/readiness", response_model=None)
+async def readiness() -> Any:
     checks = {
         "mysql": await _check_mysql(),
         "redis": await _check_redis(),
         "qdrant": await _check_qdrant(),
     }
-    status = "UP" if all(checks.values()) else "DEGRADED"
-    return ApiResponse.ok({"status": status, "checks": checks})
+    if all(checks.values()):
+        return ApiResponse.ok({"status": "UP", "checks": checks})
+    return JSONResponse(
+        status_code=503,
+        content=ApiResponse.error("服务依赖未就绪").model_dump(mode="json")
+        | {"data": {"status": "DEGRADED", "checks": checks}},
+    )
 
 
-@router.get("/health")
-async def health() -> ApiResponse[dict[str, object]]:
+@router.get("/health", response_model=None)
+async def health() -> Any:
     return await readiness()
 
 

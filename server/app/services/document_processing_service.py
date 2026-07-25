@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import AppError, NotFoundError
 from app.db.models import DocumentProcessingTask, KbChunk, KbDocument
-from app.embeddings.mock_embedding import MockEmbeddingClient
+from app.embeddings import create_embedding_client
 from app.rag.chunker import chunk_text
 from app.rag.document_parser import extract_text
 from app.repositories.qdrant_store import VectorChunkPayload, qdrant_store
@@ -183,12 +183,12 @@ class DocumentProcessingService:
                 rows.append((row, point_id))
             await session.flush()
 
-            embedding = MockEmbeddingClient(settings.embedding_dimension)
+            embedding = create_embedding_client()
             await qdrant_store.upsert_chunks(
                 [
                     (
                         point_id,
-                        embedding.embed(row.content),
+                        await embedding.embed(row.content),
                         VectorChunkPayload(
                             document_id=document.id,
                             chunk_id=row.id,

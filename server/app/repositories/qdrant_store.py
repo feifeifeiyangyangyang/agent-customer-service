@@ -91,9 +91,25 @@ class QdrantKnowledgeStore:
     async def ensure_collection(self) -> None:
         client = self._client_or_create()
         try:
-            await client.get_collection(COLLECTION_NAME)
+            info = await client.get_collection(COLLECTION_NAME)
+            vector_config = getattr(getattr(getattr(info, "config", None), "params", None), "vectors", None)
+            actual_size = getattr(vector_config, "size", None)
+            if actual_size is not None and int(actual_size) != settings.embedding_dimension:
+                raise RuntimeError(
+                    "Qdrant collection dimension mismatch: "
+                    f"actual={actual_size}, expected={settings.embedding_dimension}"
+                )
             return
+        except RuntimeError:
+            raise
         except Exception:
+            try:
+                collections = await client.get_collections()
+                names = {collection.name for collection in collections.collections}
+                if COLLECTION_NAME in names:
+                    raise
+            except RuntimeError:
+                raise
             await client.create_collection(
                 collection_name=COLLECTION_NAME,
                 vectors_config=VectorParams(size=settings.embedding_dimension, distance=Distance.COSINE),

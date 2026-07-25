@@ -31,10 +31,9 @@ class RefreshTokenService:
 
     async def consume(self, token: str) -> RefreshTokenRecord | None:
         key = self._key(token)
-        raw = await self._client().get(key)
+        raw = await self._client().getdel(key)
         if raw is None:
             return None
-        await self._client().delete(key)
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             return None

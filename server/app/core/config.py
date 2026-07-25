@@ -59,6 +59,9 @@ class Settings(BaseModel):
     rag_min_retrieval_score: float = Field(default_factory=lambda: _env_float("RAG_MIN_RETRIEVAL_SCORE", 0.35))
     document_storage_path: str = Field(default_factory=lambda: _env("DOCUMENT_STORAGE_PATH", "./data/documents"))
     embedding_mock_enabled: bool = Field(default_factory=lambda: _env_bool("EMBEDDING_MOCK_ENABLED", True))
+    embedding_api_key: str = Field(default_factory=lambda: _env("EMBEDDING_API_KEY", ""))
+    embedding_base_url: str = Field(default_factory=lambda: _env("EMBEDDING_BASE_URL", "https://api.openai.com"))
+    embedding_model_name: str = Field(default_factory=lambda: _env("EMBEDDING_MODEL_NAME", "text-embedding-3-small"))
     embedding_dimension: int = Field(default_factory=lambda: _env_int("EMBEDDING_DIMENSION", 384))
 
     cors_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]

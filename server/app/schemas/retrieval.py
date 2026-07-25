@@ -34,3 +34,9 @@ class RetrievalChannelDiagnostic(BaseModel):
     status: Literal["OK", "FAILED", "DEGRADED"]
     error_type: str | None = None
     message: str | None = None
+
+
+class RetrievalResult(BaseModel):
+    candidates: list[RetrievalCandidate]
+    diagnostics: list[RetrievalChannelDiagnostic] = Field(default_factory=list)
+    cache_hit: bool = False

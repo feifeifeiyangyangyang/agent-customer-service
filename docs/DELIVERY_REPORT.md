@@ -2,9 +2,9 @@
 
 ## 1. 当前交付范围
 
-本项目位于 `smart-customer-service/`，当前主版本是 Python Agent 客服系统：
+本项目位于 `smart-customer-service/`，当前主版本是受控 LLM Workflow 客服系统：
 
-- `server/`：FastAPI 后端、SQLAlchemy 模型、Alembic 迁移、Agent 服务、RAG 检索、文档 Worker 和自动化测试。
+- `server/`：FastAPI 后端、SQLAlchemy 模型、Alembic 迁移、受控 Workflow 服务、RAG 检索、文档 Worker 和自动化测试。
 - `web/`：Vue 3 + TypeScript 前端。
 - `deploy/`：Docker Compose、后端/前端 Dockerfile、Nginx 配置。
 - `docs/`：Python 版本面试说明、迁移说明和交付报告。
@@ -32,7 +32,7 @@ docker compose -f deploy\docker-compose.yml config --quiet
 - 已实现用户端和管理端角色隔离。
 - 已实现商品、订单、物流、售后规则、会话、工单和 Agent 审计数据模型。
 - 已实现统一工具执行器，接入角色权限、Pydantic 参数校验、超时、重试、脱敏审计、耗时记录。
-- 已实现订单/物流/商品问题优先查询业务表，知识类问题进入 RAG。
+- 已实现输入安全前置、LLM/规则结构化规划、策略二次校验，订单/物流/商品问题优先查询业务表，知识类问题进入 RAG。
 - 已实现三路混合召回：关键词检索、Dense Vector 检索、结构化业务规则检索。
 - 已实现 RRF 融合和轻量级启发式重排；没有宣传为真实 Cross-Encoder。
 - 已实现 Redis 聊天滑动窗口限流和检索结果短期缓存。
@@ -47,8 +47,8 @@ docker compose -f deploy\docker-compose.yml config --quiet
 
 ## 5. 尚未完成的生产级能力
 
-- 未接入真实 Embedding 模型，默认 MockEmbedding 只用于链路验证。
+- 默认 MockEmbedding 只用于链路验证；非 Mock 模式已支持 OpenAI Compatible Embedding，但真实语义效果需配置真实 Embedding Key 后验证。
 - 未接入真实 Cross-Encoder/Reranker。
-- 未实现 LLM 结构化规划，目前以确定性规则路由为主。
+- LLM 结构化规划和回答生成已接入 OpenAI Compatible 客户端；默认 Mock 模式不会访问外网，真实模型调用需本地 `.env` 配置 Key 后验证。
 - 未接入真实支付、物流、订单系统。
 - 未做完整压测、链路追踪和生产级密钥管理。

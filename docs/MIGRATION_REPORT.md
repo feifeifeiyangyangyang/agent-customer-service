@@ -21,7 +21,7 @@
 - Redis 聊天限流和检索缓存。
 - Qdrant 向量召回链路。
 - 结构化售后规则检索。
-- 统一工具执行器和 Agent 审计表。
+- 统一工具执行器和受控 Workflow 审计表。
 - 文档任务异步处理、原子抢占、失败重试和死信状态。
 
 ## 4. 安全处理
@@ -33,4 +33,4 @@
 
 ## 5. 面试表述建议
 
-可以说项目完成了从旧版本到 Python Agent 架构的重构，但不要把 Mock Embedding、启发式重排、响应守卫图包装成真实语义模型、Cross-Encoder 或完整 LangGraph 工作流。
+可以说项目完成了从旧版本到 Python 受控 LLM Workflow 架构的重构，但不要把 Mock Embedding、启发式重排、响应守卫图包装成真实语义模型、Cross-Encoder 或多 Agent 工作流。

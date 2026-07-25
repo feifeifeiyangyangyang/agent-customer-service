@@ -78,14 +78,15 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 def verify_password(raw_password: str, password_hash: str) -> bool:
-    try:
-        from passlib.context import CryptContext
+    import bcrypt
 
-        context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        return bool(context.verify(raw_password, password_hash))
-    except Exception:
-        # Keeps local Mock mode usable before optional auth dependencies are installed.
-        return raw_password == password_hash
+    return bool(bcrypt.checkpw(raw_password.encode("utf-8"), password_hash.encode("utf-8")))
+
+
+def hash_password(raw_password: str) -> str:
+    import bcrypt
+
+    return bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 async def current_user(request: Request, session: AsyncSession = Depends(get_session)) -> AuthenticatedUser:

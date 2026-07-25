@@ -67,13 +67,14 @@ services:
       RAG_TOP_K: ${RAG_TOP_K:-5}
       RAG_MIN_RETRIEVAL_SCORE: ${RAG_MIN_RETRIEVAL_SCORE:-0.35}
       DOCUMENT_STORAGE_PATH: /app/data/documents
-      EMBEDDING_MODEL_PATH: /app/models/embedding/model.onnx
-      EMBEDDING_TOKENIZER_PATH: /app/models/embedding/tokenizer.json
       EMBEDDING_MOCK_ENABLED: ${EMBEDDING_MOCK_ENABLED:-true}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com}
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
     ports:
       - "8080:8080"
     volumes:
-      - ../models/embedding:/app/models/embedding:ro
       - document-data:/app/data/documents
     depends_on:
       mysql:
@@ -83,7 +84,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/readiness"]
       interval: 20s
       timeout: 5s
       retries: 10
@@ -102,6 +103,10 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
       EMBEDDING_MOCK_ENABLED: ${EMBEDDING_MOCK_ENABLED:-true}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com}
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
       DOCUMENT_STORAGE_PATH: /app/data/documents
     volumes:
       - document-data:/app/data/documents

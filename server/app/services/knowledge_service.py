@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import AfterSaleRule, AfterSaleRuleCondition, KbChunk, KbDocument
-from app.embeddings.mock_embedding import MockEmbeddingClient
+from app.embeddings import EmbeddingProviderError, create_embedding_client
 from app.repositories.qdrant_store import VectorSearchHit, qdrant_store
 from app.schemas.chat import SourceReference
-from app.schemas.retrieval import RetrievalCandidate, RetrievalChannelDiagnostic, RetrievalQueryContext
+from app.schemas.retrieval import RetrievalCandidate, RetrievalChannelDiagnostic, RetrievalQueryContext, RetrievalResult
+from app.services.model_runtime_config_service import model_runtime_config_service
 from app.services.redis_runtime_service import redis_runtime_service
 
 RRF_K = 60
@@ -20,11 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 class KnowledgeService:
-    def __init__(self) -> None:
-        self.last_diagnostics: list[RetrievalChannelDiagnostic] = []
-
     async def search(self, session: AsyncSession, query: str, limit: int | None = None) -> list[SourceReference]:
-        candidates = await self.retrieve(session, query, limit=limit)
+        result = await self.retrieve_with_diagnostics(session, query, limit=limit)
+        candidates = result.candidates
         return [
             SourceReference(
                 documentId=int(candidate.document_id or 0),
@@ -43,9 +42,18 @@ class KnowledgeService:
         limit: int | None = None,
         context: RetrievalQueryContext | None = None,
     ) -> list[RetrievalCandidate]:
+        return (await self.retrieve_with_diagnostics(session, query, limit=limit, context=context)).candidates
+
+    async def retrieve_with_diagnostics(
+        self,
+        session: AsyncSession,
+        query: str,
+        limit: int | None = None,
+        context: RetrievalQueryContext | None = None,
+    ) -> RetrievalResult:
         diagnostics: list[RetrievalChannelDiagnostic] = []
-        self.last_diagnostics = diagnostics
-        effective_limit = limit or settings.rag_top_k
+        runtime = await model_runtime_config_service.get_effective(session)
+        effective_limit = limit or runtime.top_k
         normalized = _normalize_query(query)
         extracted_context = _extract_context(normalized)
         if context is not None:
@@ -59,11 +67,11 @@ class KnowledgeService:
             cached = await redis_runtime_service.get_json("retrieval", cache_payload)
             if cached:
                 diagnostics.append(RetrievalChannelDiagnostic(channel="cache", status="OK"))
-                return [
+                return RetrievalResult(candidates=[
                     candidate
                     for candidate in [RetrievalCandidate.model_validate(item) for item in json.loads(cached)]
                     if _is_visible_knowledge_candidate(candidate)
-                ]
+                ], diagnostics=diagnostics, cache_hit=True)
         except Exception:
             logger.exception("retrieval cache read failed; continuing without Redis cache")
             diagnostics.append(
@@ -114,7 +122,7 @@ class KnowledgeService:
             rule_candidates = []
         fused = rrf_fuse([keyword_candidates, vector_candidates, rule_candidates])
         reranked = heuristic_rerank(normalized, fused, extracted_context)
-        threshold = _threshold_for_query(normalized)
+        threshold = _threshold_for_query(normalized, runtime.min_retrieval_score)
         filtered = [
             candidate
             for candidate in reranked
@@ -133,7 +141,7 @@ class KnowledgeService:
             diagnostics.append(
                 RetrievalChannelDiagnostic(channel="cache", status="DEGRADED", error_type="CACHE_WRITE_FAILED")
             )
-        return result
+        return RetrievalResult(candidates=result, diagnostics=diagnostics, cache_hit=False)
 
     async def keyword_recall(
         self, session: AsyncSession, query: str, limit: int
@@ -177,8 +185,11 @@ class KnowledgeService:
 
     async def dense_vector_recall(self, query: str, limit: int) -> list[RetrievalCandidate]:
         try:
-            embedding = MockEmbeddingClient(settings.embedding_dimension)
-            hits = await qdrant_store.search(embedding.embed(query), limit)
+            embedding = create_embedding_client()
+            hits = await qdrant_store.search(await embedding.embed(query), limit)
+        except EmbeddingProviderError:
+            logger.exception("embedding provider unavailable; dense vector channel degraded")
+            return []
         except Exception:
             logger.exception("qdrant dense vector search failed")
             return []
@@ -399,11 +410,12 @@ def _extract_keywords(query: str) -> list[str]:
     return terms[:8]
 
 
-def _threshold_for_query(query: str) -> float:
+def _threshold_for_query(query: str, configured_min_score: float | None = None) -> float:
+    base_score = configured_min_score if configured_min_score is not None else settings.rag_min_retrieval_score
     support_terms = ["退款", "退货", "运费", "邮费", "破损", "损坏", "坏了", "质量", "拆封", "售后", "凭证"]
     if any(term in query for term in support_terms):
-        return 0.08
-    return settings.rag_min_retrieval_score
+        return max(0.08, base_score - 0.27)
+    return base_score
 
 
 def dedupe_candidates(candidates: Iterable[RetrievalCandidate]) -> list[RetrievalCandidate]:

@@ -49,11 +49,12 @@ def test_chunk_text_splits_long_policy_with_overlap() -> None:
     assert all(chunk.content_hash for chunk in chunks)
 
 
-def test_mock_embedding_is_deterministic_and_normalized() -> None:
+@pytest.mark.asyncio
+async def test_mock_embedding_is_deterministic_and_normalized() -> None:
     client = MockEmbeddingClient(32)
 
-    first = client.embed("商品发货时间")
-    second = client.embed("商品发货时间")
+    first = await client.embed("商品发货时间")
+    second = await client.embed("商品发货时间")
 
     assert first == second
     assert len(first) == 32
@@ -241,12 +242,13 @@ async def test_retrieve_continues_when_keyword_recall_fails(monkeypatch: pytest.
     monkeypatch.setattr(redis_runtime_service, "get_json", empty_cache)
     monkeypatch.setattr(redis_runtime_service, "set_json", noop_cache)
 
-    candidates = await service.retrieve(object(), "收到商品坏了怎么办", limit=3)  # type: ignore[arg-type]
+    result = await service.retrieve_with_diagnostics(object(), "收到商品坏了怎么办", limit=3)  # type: ignore[arg-type]
+    candidates = result.candidates
 
     assert {candidate.source_type for candidate in candidates} == {"dense_vector", "structured_rule"}
     assert any(
         diagnostic.channel == "keyword" and diagnostic.status == "FAILED"
-        for diagnostic in service.last_diagnostics
+        for diagnostic in result.diagnostics
     )
 
 
