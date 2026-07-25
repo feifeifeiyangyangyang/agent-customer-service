@@ -399,14 +399,19 @@ function openSource(source: SourceReference) {
   sourceVisible.value = true
 }
 
-function openDocumentSource(document: KnowledgeDocumentRow) {
-  selectedSource.value = {
-    documentId: document.id,
-    fileName: document.originalName,
-    snippet: '这是当前知识库中的可检索文档。客服回答命中该文档时，会在回答下方显示对应片段引用。',
-    score: 0
+async function openDocumentSource(document: KnowledgeDocumentRow) {
+  try {
+    const detail = await unwrap<KnowledgeDocumentRow & { content: string }>(api.get(`/knowledge/documents/${document.id}`))
+    selectedSource.value = {
+      documentId: document.id,
+      fileName: document.originalName,
+      snippet: detail.content || '该文档暂未生成可展示片段。',
+      score: 0
+    }
+    sourceVisible.value = true
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '知识库资料加载失败')
   }
-  sourceVisible.value = true
 }
 
 function parseMessageSources(value?: string | null): SourceReference[] {

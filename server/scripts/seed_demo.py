@@ -51,27 +51,27 @@ async def main() -> None:
                 "轻氧洗面巾 C20",
                 "个护耗材",
                 Decimal("39.90"),
-                320,
+                318,
                 "工作日 18 点前付款通常当天出库，偏远地区以物流时效为准。",
-                "未明显使用且不影响二次销售时可申请售后。",
+                "个护耗材拆封后通常不支持无理由退货；质量问题可转人工核实。",
             ),
             (
                 "H100",
                 "暖风杯 H100",
-                "生活电器",
+                "小家电",
                 Decimal("199.00"),
-                48,
+                40,
                 "现货订单通常在付款后 48 小时内发货，预售或活动高峰可能顺延。",
-                "质量问题可申请换货或售后检测。",
+                "未影响二次销售可申请退货；质量问题可提供照片或视频凭证申请换货。",
             ),
             (
                 "P9",
                 "云感靠枕 P9",
-                "家居用品",
+                "居家纺织品",
                 Decimal("129.00"),
-                88,
+                85,
                 "现货订单通常 24 小时内发货，定制颜色以页面预计时间为准。",
-                "签收后如有破损请保留照片并联系售后。",
+                "未清洗、未明显使用且包装完整时可提交退货申请。",
             ),
         ]
         for code, name, category, price, stock, dispatch, after_sale in products:
@@ -93,6 +93,15 @@ async def main() -> None:
                         updated_at=datetime.now(),
                     )
                 )
+            else:
+                existing_product.product_name = name
+                existing_product.category = category
+                existing_product.sale_status = "ON_SALE"
+                existing_product.price = price
+                existing_product.stock_quantity = stock
+                existing_product.dispatch_rule = dispatch
+                existing_product.after_sale_rule = after_sale
+                existing_product.updated_at = datetime.now()
         await _seed_policy_document(session)
         await _seed_structured_rules(session)
         await session.commit()

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.core.security import AuthenticatedUser, current_user, require_admin
-from app.db.models import DocumentProcessingTask, KbDocument
+from app.db.models import DocumentProcessingTask, KbChunk, KbDocument
 from app.db.session import get_session
 from app.schemas.common import ApiResponse, PageResult
 from app.services.document_processing_service import document_processing_service
@@ -59,6 +59,38 @@ async def list_public_documents(
         .all()
     )
     return ApiResponse.ok([public_document_response(row) for row in rows])
+
+
+@public_router.get("/{document_id}")
+async def get_public_document(
+    document_id: int,
+    _user: AuthenticatedUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResponse[dict[str, object]]:
+    document = await session.get(KbDocument, document_id)
+    if document is None or document.status not in {"READY", "COMPLETED"}:
+        raise NotFoundError("知识库文档不存在")
+    chunks = (
+        (
+            await session.execute(
+                select(KbChunk)
+                .where(KbChunk.document_id == document.id)
+                .order_by(KbChunk.chunk_index.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return ApiResponse.ok(
+        {
+            **public_document_response(document),
+            "content": "\n\n".join(chunk.content for chunk in chunks),
+            "chunks": [
+                {"id": chunk.id, "chunkIndex": chunk.chunk_index, "content": chunk.content}
+                for chunk in chunks
+            ],
+        }
+    )
 
 
 @router.get("")

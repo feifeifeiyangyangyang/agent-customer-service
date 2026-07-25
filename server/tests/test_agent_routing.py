@@ -85,6 +85,56 @@ def test_product_name_with_shipping_rule_uses_product_tool() -> None:
     assert plan.required_tools == ["get_product_information"]
 
 
+def test_order_product_intro_uses_product_query_with_order_tool() -> None:
+    plan = build_rule_based_plan("介绍一下订单 ORD202607140003 这个商品")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.order_reference is not None
+    assert plan.order_reference.order_no == "ORD202607140003"
+    assert plan.required_tools == ["get_order_detail", "get_product_information"]
+
+
+def test_product_intro_question_uses_product_tool() -> None:
+    plan = build_rule_based_plan("介绍一下暖风杯 H100")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.product_reference == "杯"
+    assert plan.required_tools == ["get_product_information"]
+
+
+def test_order_product_material_question_uses_order_product_tool() -> None:
+    plan = build_rule_based_plan("我要这个订单 ORD202607140003 的商品资料")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.order_reference is not None
+    assert plan.order_reference.order_no == "ORD202607140003"
+    assert plan.required_tools == ["get_order_detail", "get_product_information"]
+
+
+def test_product_material_follow_up_without_order_falls_back_to_knowledge() -> None:
+    plan = build_rule_based_plan("我要这个的商品资料")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.order_reference is None
+    assert plan.product_reference is None
+
+
+def test_product_quality_problem_routes_to_knowledge() -> None:
+    plan = build_rule_based_plan("洗脸巾包装破损怎么办")
+
+    assert plan.intent == "KNOWLEDGE_QUERY"
+    assert plan.product_reference == "洗面巾"
+    assert plan.required_tools == ["search_knowledge_base"]
+
+
+def test_specific_product_after_sale_rule_uses_product_tool() -> None:
+    plan = build_rule_based_plan("C20 售后规则")
+
+    assert plan.intent == "PRODUCT_QUERY"
+    assert plan.product_reference == "C20"
+    assert plan.required_tools == ["get_product_information"]
+
+
 def test_explicit_order_no_with_after_sale_question_routes_to_knowledge() -> None:
     plan = build_rule_based_plan("订单 ORD202607140003 能不能退货")
 

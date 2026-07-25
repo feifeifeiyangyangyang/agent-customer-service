@@ -47,6 +47,20 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[] if order_ref or _extract_product_keyword(clean) else ["order_reference"],
             decision_reason="用户表达了退款意图，必须经过确认和管理员审批。",
         )
+    product_ref = _extract_product_keyword(clean)
+    if order_ref and order_ref.order_no and _is_product_info_query(clean):
+        return AgentPlan(
+            intent="PRODUCT_QUERY",
+            goal=clean,
+            order_reference=order_ref,
+            product_reference=product_ref,
+            required_tools=["get_order_detail", "get_product_information"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户基于明确订单咨询商品资料，先查订单再读取该商品资料。",
+        )
     if order_ref and order_ref.order_no and _is_after_sale_policy_query(clean):
         return AgentPlan(
             intent="KNOWLEDGE_QUERY",
@@ -73,7 +87,6 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[],
             decision_reason="用户提供了明确订单号，优先查询该订单真实状态。",
         )
-    product_ref = _extract_product_keyword(clean)
     if product_ref and _is_product_rule_query(clean):
         return AgentPlan(
             intent="PRODUCT_QUERY",
@@ -86,6 +99,19 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             requires_confirmation=False,
             missing_information=[],
             decision_reason="用户咨询商品规则或商品基础信息，读取商品资料表。",
+        )
+    if _is_after_sale_policy_query(clean):
+        return AgentPlan(
+            intent="KNOWLEDGE_QUERY",
+            goal=clean,
+            order_reference=order_ref,
+            product_reference=product_ref,
+            required_tools=["search_knowledge_base"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户咨询退换货、破损、售后规则，进入知识库和结构化规则检索。",
         )
     if any(word in clean for word in ["物流", "快递", "发货", "到哪", "到哪里", "什么时候到"]):
         return AgentPlan(
@@ -100,7 +126,7 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[],
             decision_reason="问题涉及订单物流或发货，优先使用订单工具。",
         )
-    if any(word in clean for word in ["商品", "库存", "价格", "杯", "洗脸巾", "洗面巾", "靠枕"]):
+    if any(word in clean for word in ["商品", "库存", "价格", "杯", "洗脸巾", "洗面巾", "靠枕", "介绍", "资料"]):
         return AgentPlan(
             intent="PRODUCT_QUERY",
             goal=clean,
@@ -143,7 +169,26 @@ def _is_after_sale_policy_query(question: str) -> bool:
 
 
 def _is_product_rule_query(question: str) -> bool:
-    terms = ["发货规则", "发货时效", "出库规则", "售后规则", "库存", "价格", "多少钱", "还有货", "在售"]
+    terms = [
+        "发货规则",
+        "发货时效",
+        "出库规则",
+        "售后规则",
+        "库存",
+        "价格",
+        "多少钱",
+        "还有货",
+        "在售",
+        "商品资料",
+        "介绍",
+        "参数",
+        "分类",
+    ]
+    return any(term in question for term in terms)
+
+
+def _is_product_info_query(question: str) -> bool:
+    terms = ["商品资料", "介绍", "参数", "分类", "这个商品", "商品信息", "卖点"]
     return any(term in question for term in terms)
 
 

@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, cast
 from uuid import uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +26,8 @@ from app.db.models import (
     AgentStep,
     ChatMessage,
     CustomerOrder,
+    KbChunk,
+    KbDocument,
     ProductCatalog,
 )
 from app.schemas.agent import AgentPlan
@@ -244,7 +246,21 @@ class AgentService:
     def _product_context_follow_up(self, question: str) -> bool:
         if not 0 < len(question) <= 18:
             return False
-        terms = ["库存", "价格", "多少钱", "在售", "还有货", "发货规则", "发货时效", "售后规则"]
+        terms = [
+            "库存",
+            "价格",
+            "多少钱",
+            "在售",
+            "还有货",
+            "发货规则",
+            "发货时效",
+            "售后规则",
+            "商品资料",
+            "商品信息",
+            "介绍",
+            "参数",
+            "这个商品",
+        ]
         return any(term in question for term in terms)
 
     def _has_explicit_product_mention(self, question: str) -> bool:
@@ -331,6 +347,23 @@ class AgentService:
                     "我没有定位到对应订单。您可以说“最近订单”“第二个订单”，或直接提供订单号。",
                 )
             return self._plain_response(conversation_id, self._order_answer(order, question))
+        if plan.intent == "PRODUCT_QUERY" and plan.order_reference:
+            order = cast(CustomerOrder | None, await tool_executor.execute(
+                session,
+                run_id,
+                user,
+                "get_order_detail",
+                self._order_tool_args(plan),
+                lambda args: self._resolve_order_by_args(session, user, args),
+                lambda resolved: "resolved order" if resolved else "not found",
+            ))
+            if order is not None:
+                return self._plain_response(
+                    conversation_id,
+                    f"我查到订单 {order.order_no} 对应的商品是「{order.product.product_name}」。"
+                    + self._product_answer(order.product, include_name=False),
+                    sources=await self._product_sources(session, order.product),
+                )
         if plan.intent == "PRODUCT_QUERY" and plan.product_reference:
             product = cast(ProductCatalog | None, await tool_executor.execute(
                 session,
@@ -344,9 +377,8 @@ class AgentService:
             if product is not None:
                 return self._plain_response(
                     conversation_id,
-                    f"「{product.product_name}」当前状态为{product.sale_status}，库存 {product.stock_quantity} 件，"
-                    f"售价 {product.price} 元。发货规则：{self._clean_sentence(product.dispatch_rule)}。"
-                    f"售后说明：{self._clean_sentence(product.after_sale_rule)}。",
+                    self._product_answer(product),
+                    sources=await self._product_sources(session, product),
                 )
         retrieval_context = await self._build_retrieval_context(session, user, plan)
         candidates = cast(list[RetrievalCandidate], await tool_executor.execute(
@@ -364,7 +396,7 @@ class AgentService:
             lambda resolved: f"resolved {len(resolved)} retrieval candidates",
         ))
         self._record_retrieval_trace(session, run_id, candidates, knowledge_service.last_diagnostics)
-        sources = self._source_references(candidates)
+        sources = self._source_references(candidates, question)
         if candidates:
             best = candidates[0]
             order_for_answer = await self._resolve_order(session, user, plan) if plan.order_reference else None
@@ -519,6 +551,43 @@ class AgentService:
             return f"{lead}这单已签收。如需售后，可以继续描述商品问题。"
         return f"{lead}当前状态是 {self._order_status_label(order.status)}。"
 
+    def _product_answer(self, product: ProductCatalog, include_name: bool = True) -> str:
+        prefix = f"「{product.product_name}」" if include_name else ""
+        return (
+            f"{prefix}商品编码 {product.product_code}，分类：{product.category}，"
+            f"当前状态：{self._product_status_label(product.sale_status)}，库存 {product.stock_quantity} 件，"
+            f"售价 {product.price} 元。"
+            f"发货规则：{self._clean_sentence(product.dispatch_rule)}。"
+            f"售后规则：{self._clean_sentence(product.after_sale_rule)}。"
+        )
+
+    async def _product_sources(self, session: AsyncSession, product: ProductCatalog) -> list[SourceReference]:
+        candidates = [product.product_code, product.product_name.replace(" ", "")]
+        conditions = [KbDocument.original_name.like(f"%{candidate}%") for candidate in candidates if candidate]
+        if not conditions:
+            return []
+        condition = or_(*conditions)
+        row = (
+            await session.execute(
+                select(KbDocument, KbChunk)
+                .join(KbChunk, KbChunk.document_id == KbDocument.id)
+                .where(KbDocument.status.in_(["READY", "COMPLETED"]), condition)
+                .order_by(KbChunk.chunk_index.asc())
+                .limit(1)
+            )
+        ).first()
+        if row is None:
+            return []
+        document, chunk = row
+        return [
+            SourceReference(
+                documentId=int(document.id),
+                fileName=str(document.original_name),
+                snippet=str(chunk.content)[:260],
+                score=1.0,
+            )
+        ]
+
     def _is_shipping_rule_question(self, question: str) -> bool:
         return any(term in question for term in ["发货规则", "发货时效", "出库规则", "多久发货", "什么时候发货"])
 
@@ -558,7 +627,14 @@ class AgentService:
             "CANCELLED": "已取消",
         }.get(status, status)
 
-    def _source_references(self, candidates: list[RetrievalCandidate]) -> list[SourceReference]:
+    def _product_status_label(self, status: str) -> str:
+        return {
+            "ON_SALE": "在售",
+            "OUT_OF_STOCK": "缺货",
+            "OFF_SHELF": "下架",
+        }.get(status, status)
+
+    def _source_references(self, candidates: list[RetrievalCandidate], question: str = "") -> list[SourceReference]:
         sources: list[SourceReference] = []
         for candidate in candidates:
             if candidate.source_type == "structured_rule":
@@ -573,10 +649,13 @@ class AgentService:
                 continue
             if candidate.document_id is None:
                 continue
+            file_name = str(candidate.metadata.get("file_name", "knowledge"))
+            if not self._source_matches_question(file_name, question):
+                continue
             sources.append(
                 SourceReference(
                     documentId=int(candidate.document_id),
-                    fileName=str(candidate.metadata.get("file_name", "knowledge")),
+                    fileName=file_name,
                     snippet=candidate.content[:260],
                     score=candidate.rerank_score or candidate.fused_score or candidate.original_score,
                 )
@@ -591,17 +670,17 @@ class AgentService:
     ) -> str:
         structured = [candidate for candidate in candidates if candidate.source_type == "structured_rule"]
         if order is not None and self._is_after_sale_rule_question(question):
-            product_rule = (
-                f"我查到这单商品是「{order.product.product_name}」。"
-                f"该商品售后规则：{self._clean_sentence(order.product.after_sale_rule)}。"
-            )
+            product_rule = self._customer_after_sale_lead(order)
             if structured:
-                return f"{product_rule}\n{structured[0].content}"
+                return f"{product_rule}{structured[0].content}"
+            if candidates:
+                candidate = self._best_customer_candidate(candidates, question)
+                return f"{product_rule}{self._knowledge_excerpt(candidate.content)}"
             return product_rule
         if structured:
             rule = structured[0]
             return rule.content
-        return candidates[0].content[:320]
+        return self._knowledge_excerpt(self._best_customer_candidate(candidates, question).content)
 
     def _is_after_sale_rule_question(self, question: str) -> bool:
         terms = ["退货", "退款", "退钱", "售后", "破损", "损坏", "包装", "拆封", "换货", "能不能退", "怎么退"]
@@ -609,6 +688,50 @@ class AgentService:
 
     def _clean_sentence(self, value: str) -> str:
         return value.strip().rstrip("。.!！")
+
+    def _customer_after_sale_lead(self, order: CustomerOrder) -> str:
+        product_rule = self._clean_sentence(order.product.after_sale_rule)
+        return f"您这单是「{order.product.product_name}」。{product_rule}。"
+
+    def _best_customer_candidate(
+        self,
+        candidates: list[RetrievalCandidate],
+        question: str,
+    ) -> RetrievalCandidate:
+        preferred: list[str] = []
+        if any(term in question for term in ["破损", "损坏", "包装", "坏了", "质量"]):
+            preferred = ["商品损坏", "售后与退换货", "退换货政策"]
+        elif any(term in question for term in ["退货", "拆封", "换货"]):
+            preferred = ["退换货政策", "售后与退换货", "商品损坏"]
+        elif any(term in question for term in ["退款", "退钱", "到账"]):
+            preferred = ["退款处理"]
+        for keyword in preferred:
+            for candidate in candidates:
+                file_name = str(candidate.metadata.get("file_name", ""))
+                if keyword in file_name or keyword in candidate.content[:80]:
+                    return candidate
+        return candidates[0]
+
+    def _knowledge_excerpt(self, content: str, max_chars: int = 260) -> str:
+        lines = []
+        for line in content.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            clean = line.strip().lstrip("#").strip()
+            if not clean or clean.startswith("本文件用于演示"):
+                continue
+            lines.append(clean)
+        return " ".join(lines)[:max_chars]
+
+    def _source_matches_question(self, file_name: str, question: str) -> bool:
+        if not file_name.startswith("商品资料-"):
+            return True
+        upper_question = question.upper()
+        if any(term in question for term in ["洗脸巾", "洗面巾", "洁面巾"]) or "C20" in upper_question:
+            return "C20" in file_name or "洗面巾" in file_name
+        if "杯" in question or "H100" in upper_question:
+            return "H100" in file_name or "暖风杯" in file_name
+        if any(term in question for term in ["靠枕", "枕头"]) or "P9" in upper_question:
+            return "P9" in file_name or "靠枕" in file_name
+        return True
 
     def _record_retrieval_trace(
         self,
@@ -673,11 +796,12 @@ class AgentService:
         answer: str,
         confidence_level: str = "HIGH",
         need_human: bool = False,
+        sources: list[SourceReference] | None = None,
     ) -> ChatResponse:
         return ChatResponse(
             conversationId=conversation_id,
             answer=answer,
-            sources=[],
+            sources=sources or [],
             retrievalScore=0,
             confidenceLevel=confidence_level,
             needHuman=need_human,
