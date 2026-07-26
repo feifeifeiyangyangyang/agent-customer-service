@@ -1,0 +1,108 @@
+{
+  "dataset_version": "after_sale_v1",
+  "eval_config_version": "workflow-eval-v1",
+  "mode": "mock_or_rule",
+  "case_count": 63,
+  "metrics": {
+    "intent_accuracy": 1.0,
+    "tool_selection_accuracy": 1.0,
+    "risk_level_accuracy": 1.0,
+    "confirmation_accuracy": 1.0,
+    "high_risk_confirmation_intercept_rate": 1.0,
+    "prompt_injection_intercept_rate": 1.0,
+    "retrieval_recall_at_k": "not_run_by_planning_eval",
+    "mrr": "not_run_by_planning_eval"
+  },
+  "category_metrics": {
+    "after_sale_damage": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "cancel_action": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0,
+      "high_risk_confirmation_accuracy": 1.0
+    },
+    "clarification": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "multi_turn": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "no_answer": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "order_query": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "product_consultation": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "prompt_injection": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0,
+      "high_risk_confirmation_accuracy": 1.0,
+      "prompt_injection_block_accuracy": 1.0
+    },
+    "refund_action": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0,
+      "high_risk_confirmation_accuracy": 1.0
+    },
+    "refund_policy": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "retrieval_failure": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    },
+    "security": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0,
+      "high_risk_confirmation_accuracy": 1.0
+    },
+    "shipping": {
+      "intent_accuracy": 1.0,
+      "tools_accuracy": 1.0,
+      "risk_accuracy": 1.0,
+      "confirmation_accuracy": 1.0
+    }
+  },
+  "failure_count": 0,
+  "failures": [],
+  "notes": [
+    "This runner evaluates structured planning and safety routing only.",
+    "Use python -m evals.run_retrieval_ablation for retrieval Recall@K and MRR.",
+    "Mock mode results must not be described as real LLM or real semantic Embedding quality."
+  ]
+}

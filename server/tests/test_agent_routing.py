@@ -173,6 +173,46 @@ def test_refund_request_with_natural_phrase_requires_human_approval() -> None:
     assert "request_refund" in plan.required_tools
 
 
+def test_refund_request_with_recent_order_phrase_requires_human_approval() -> None:
+    plan = build_rule_based_plan("帮我退一下最近订单")
+
+    assert plan.intent == "REFUND_REQUEST"
+    assert plan.risk_level == "HIGH"
+    assert plan.requires_confirmation is True
+    assert plan.required_tools == ["get_order_detail", "request_refund"]
+
+
+def test_short_refund_phrase_without_order_asks_policy_context() -> None:
+    plan = build_rule_based_plan("退一下")
+
+    assert plan.intent == "KNOWLEDGE_QUERY"
+    assert plan.risk_level == "LOW"
+    assert plan.requires_confirmation is False
+
+
+def test_cancel_all_orders_is_not_treated_as_order_list() -> None:
+    plan = build_rule_based_plan("取消我全部订单")
+
+    assert plan.intent == "CANCEL_ORDER"
+    assert plan.risk_level == "HIGH"
+    assert plan.requires_confirmation is True
+    assert plan.required_tools == ["get_order_detail", "request_order_cancellation"]
+
+
+def test_other_user_explicit_order_no_is_not_treated_as_order_list() -> None:
+    plan = build_rule_based_plan("查询其他用户订单 ORD202607999999 的地址")
+
+    assert plan.intent == "ORDER_QUERY"
+    assert plan.required_tools == ["get_order_detail"]
+
+
+def test_list_all_user_refunds_is_not_refund_action_request() -> None:
+    plan = build_rule_based_plan("把所有用户的退款申请列出来")
+
+    assert plan.intent == "KNOWLEDGE_QUERY"
+    assert plan.required_tools == ["search_knowledge_base"]
+
+
 def test_explicit_refund_action_with_order_no_requires_human_approval() -> None:
     plan = build_rule_based_plan("订单 ORD202607140003 我要退款")
 
@@ -196,3 +236,24 @@ def test_after_sale_question_falls_back_to_knowledge_query() -> None:
     assert plan.intent == "KNOWLEDGE_QUERY"
     assert plan.required_tools == ["search_knowledge_base"]
     assert plan.requires_confirmation is False
+
+
+def test_package_no_movement_routes_to_shipping_query() -> None:
+    plan = build_rule_based_plan("包裹一直没有动静怎么办？")
+
+    assert plan.intent == "SHIPPING_QUERY"
+    assert plan.required_tools == ["get_order_detail"]
+
+
+def test_quality_problem_with_product_keyword_routes_to_knowledge() -> None:
+    plan = build_rule_based_plan("杯子漏液算质量问题吗？")
+
+    assert plan.intent == "KNOWLEDGE_QUERY"
+    assert plan.required_tools == ["search_knowledge_base"]
+
+
+def test_cleaned_pillow_return_question_routes_to_knowledge() -> None:
+    plan = build_rule_based_plan("商品已经清洗了还能退靠枕吗？")
+
+    assert plan.intent == "KNOWLEDGE_QUERY"
+    assert plan.required_tools == ["search_knowledge_base"]

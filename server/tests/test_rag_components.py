@@ -12,6 +12,7 @@ from app.services.knowledge_service import (
     KnowledgeService,
     _condition_matches,
     _extract_after_sale_type,
+    _threshold_for_query,
     dedupe_candidates,
     heuristic_rerank,
     rrf_fuse,
@@ -282,3 +283,9 @@ async def test_retrieve_returns_empty_when_all_channels_below_threshold(monkeypa
     candidates = await service.retrieve(object(), "天上的云是什么味道", limit=3)  # type: ignore[arg-type]
 
     assert candidates == []
+
+
+def test_support_question_threshold_is_relaxed_but_bounded() -> None:
+    assert _threshold_for_query("商品破损怎么售后", configured_min_score=0.35) == pytest.approx(0.08)
+    assert _threshold_for_query("商品破损怎么售后", configured_min_score=0.60) == pytest.approx(0.33)
+    assert _threshold_for_query("商品库存还有多少", configured_min_score=0.35) == pytest.approx(0.35)

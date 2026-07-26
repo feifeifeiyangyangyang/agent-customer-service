@@ -7,16 +7,15 @@ from datetime import datetime
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.models import AfterSaleRule, AfterSaleRuleCondition, KbChunk, KbDocument
 from app.embeddings import EmbeddingProviderError, create_embedding_client
+from app.rag.retrieval_config import retrieval_scoring_config
 from app.repositories.qdrant_store import VectorSearchHit, qdrant_store
 from app.schemas.chat import SourceReference
 from app.schemas.retrieval import RetrievalCandidate, RetrievalChannelDiagnostic, RetrievalQueryContext, RetrievalResult
 from app.services.model_runtime_config_service import model_runtime_config_service
 from app.services.redis_runtime_service import redis_runtime_service
 
-RRF_K = 60
 logger = logging.getLogger(__name__)
 
 
@@ -265,7 +264,10 @@ def _is_visible_knowledge_candidate(candidate: RetrievalCandidate) -> bool:
     return not file_name.lower().startswith("e2e-")
 
 
-def rrf_fuse(result_sets: list[list[RetrievalCandidate]], k: int = RRF_K) -> list[RetrievalCandidate]:
+def rrf_fuse(
+    result_sets: list[list[RetrievalCandidate]],
+    k: int = retrieval_scoring_config.rrf_k,
+) -> list[RetrievalCandidate]:
     merged: dict[str, RetrievalCandidate] = {}
     scores: dict[str, float] = {}
     for result_set in result_sets:
@@ -411,11 +413,7 @@ def _extract_keywords(query: str) -> list[str]:
 
 
 def _threshold_for_query(query: str, configured_min_score: float | None = None) -> float:
-    base_score = configured_min_score if configured_min_score is not None else settings.rag_min_retrieval_score
-    support_terms = ["退款", "退货", "运费", "邮费", "破损", "损坏", "坏了", "质量", "拆封", "售后", "凭证"]
-    if any(term in query for term in support_terms):
-        return max(0.08, base_score - 0.27)
-    return base_score
+    return retrieval_scoring_config.threshold_for_query(query, configured_min_score)
 
 
 def dedupe_candidates(candidates: Iterable[RetrievalCandidate]) -> list[RetrievalCandidate]:

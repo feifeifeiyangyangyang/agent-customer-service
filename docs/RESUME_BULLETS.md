@@ -33,3 +33,97 @@ Python 3.12、FastAPI、SQLAlchemy Async ORM、Alembic、MySQL、Redis、Qdrant�
 - 当前默认 Embedding 是 Mock 哈希向量，可验证链路但不代表真实语义向量效果。
 - 当前不是多 Agent 系统，LLM 规划只是候选计划，不能越过策略层和工具执行器。
 - 默认 Mock 模式不会真实调用大模型；真实模型和真实 Embedding 需本地 `.env` 配置 Key 后验证。
+
+## 设计取舍与面试追问
+
+### 1. 受控 Workflow，而不是完全自主 Agent
+
+简历建议：
+
+- 设计受控 LLM Workflow，将输入守卫、结构化规划、策略校验、工具执行、RAG、人工审批和审计收口串成确定性链路，避免大模型直接执行退款、取消订单等高风险操作。
+
+面试追问预留点：
+
+- 为什么 LLM 不能直接改库？
+- 高风险动作为什么要 Human-in-the-loop？
+- 工具调用失败时怎么降级？
+
+代码支撑：
+
+- `server/app/agent/routing.py`
+- `server/app/agent/tools/executor.py`
+- `server/app/services/agent_service.py`
+
+不能这样写：
+
+- “实现多 Agent 协同”
+- “大模型自主完成退款和取消订单”
+
+### 2. 三路混合召回
+
+简历建议：
+
+- 针对电商售后中商品型号、政策术语、订单状态和口语化表达混杂的问题，实现关键词检索、Dense Vector 检索和结构化业务规则检索三路召回，使用 RRF 融合并保留召回来源、原始分数和失败样本用于错误分析。
+
+面试追问预留点：
+
+- 为什么纯向量不够？
+- 结构化规则和知识库文档冲突怎么办？
+- RRF 参数和阈值怎么解释？
+
+代码支撑：
+
+- `server/app/services/knowledge_service.py`
+- `server/app/schemas/retrieval.py`
+- `server/app/rag/retrieval_config.py`
+
+不能这样写：
+
+- “已接入真实 Cross-Encoder”
+- “Mock Embedding 具备真实语义召回能力”
+
+### 3. 工具安全、幂等和审计
+
+简历建议：
+
+- 建立统一工具注册表和执行器，对工具角色权限、Pydantic 参数校验、风险等级、超时重试、脱敏和审计统一处理；退款和取消订单只生成审批请求，由管理员审批后再执行确定性业务动作。
+
+面试追问预留点：
+
+- 重复提交退款如何处理？
+- 管理员审批前为什么还要重新校验订单？
+- 工具参数里有敏感信息怎么记录日志？
+
+代码支撑：
+
+- `server/app/agent/tools/registry.py`
+- `server/app/agent/tools/executor.py`
+- `server/app/services/action_execution_service.py`
+
+不能这样写：
+
+- “LLM 直接调用支付退款接口”
+- “权限由提示词保证”
+
+### 4. 评测集和消融实验
+
+简历建议：
+
+- 构建 63 条版本化售后离线评测集，覆盖商品咨询、订单查询、物流发货、退款/取消、破损售后、Prompt Injection、越权查询、多轮指代和检索故障；实现规划路由评测与检索消融脚本，输出准确率、Recall@K、MRR、失败样本和配置版本。
+
+面试追问预留点：
+
+- 这个评测是测 LLM 还是测 Workflow？
+- 检索消融需要哪些依赖？
+- 没有真实 Embedding 时结果怎么解释？
+
+代码支撑：
+
+- `server/evals/datasets/after_sale_v1.jsonl`
+- `server/evals/run_eval.py`
+- `server/evals/run_retrieval_ablation.py`
+
+不能这样写：
+
+- “线上准确率提升 XX%”
+- “Mock 结果证明真实模型效果”

@@ -294,3 +294,85 @@ docker compose -f deploy/docker-compose.yml config --quiet
 - 高风险业务动作采用“Workflow 创建申请，管理员审批执行”的安全闭环，模型不能直接改库。
 - 登录鉴权使用 Access JWT + Redis Refresh Token，而不是前端演示登录。
 - 每次 Agent 运行都有可追踪记录，便于排查回答依据和工具调用过程。
+
+## 评测系统
+
+当前版本新增了版本化离线评测集和评测执行器，放在：
+
+```text
+server/evals/
+```
+
+评测集 `after_sale_v1` 覆盖 63 条售后场景样本，包括商品咨询、订单查询、物流发货、退款规则、退款操作、取消订单、破损售后、无答案拒答、信息不完整澄清、Prompt Injection、越权查询、多轮指代和检索故障场景。样本保存结构化期望值，而不是只保存问答文本。
+
+规划和安全路由评测：
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m evals.run_eval --output evals\reports\workflow_eval_latest.json --pretty
+```
+
+检索消融实验：
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m evals.run_retrieval_ablation --output evals\reports\retrieval_ablation_latest.json --pretty
+```
+
+消融实验支持 Keyword only、Dense only、Keyword + Dense、Keyword + Dense + Structured Rule、三路召回 + RRF、三路召回 + RRF + 启发式重排。报告输出 Recall@K、MRR、分类召回、失败样本和平均检索耗时。
+
+边界说明：
+
+- `run_eval` 评估的是结构化规划、工具选择、风险等级和确认拦截，不等同于真实 LLM 生成质量。
+- 检索消融需要 MySQL 可用，Dense 通道需要 Qdrant 可用。
+- 默认 `EMBEDDING_MOCK_ENABLED=true` 时，Dense 结果只能说明向量库链路可跑，不能证明真实语义召回效果。
+
+## 设计取舍与面试追问
+
+### 1. 为什么选择受控 Workflow，而不是完全自主 Agent？
+
+简历建议写：将客服链路拆成输入守卫、结构化规划、策略校验、工具执行、RAG、人工审批和审计收口，限制模型只能生成候选计划，业务副作用由确定性代码执行。
+
+可能追问：为什么不让模型直接调用退款接口？回答要点是订单归属、状态机、幂等、审批和审计必须由服务端保证，LLM 不能成为权限边界。
+
+代码路径：`server/app/agent/routing.py`、`server/app/agent/tools/executor.py`、`server/app/services/agent_service.py`
+
+可展示验证：`python -m evals.run_eval`、`tests/test_agent_routing.py`、`tests/test_tool_registry.py`
+
+不能夸大：当前不是 Multi-Agent，也不是开放式 ReAct。
+
+### 2. 为什么使用关键词、Dense Vector、结构化规则三路召回？
+
+简历建议写：针对商品型号、订单时效和售后状态难以靠纯向量稳定处理的问题，实现关键词、Dense Vector 与结构化规则三路混合召回，并使用 RRF 融合和启发式重排。
+
+可能追问：三路分别解决什么问题？关键词适合型号和政策术语，Dense 适合口语化表达，结构化规则适合订单状态和有效规则筛选。
+
+代码路径：`server/app/services/knowledge_service.py`、`server/app/schemas/retrieval.py`、`server/app/rag/retrieval_config.py`
+
+可展示验证：`python -m evals.run_retrieval_ablation`
+
+不能夸大：默认 Mock Embedding 不代表真实语义检索；当前重排不是 Cross-Encoder。
+
+### 3. 模型生成工具调用后，如何保证权限、安全、幂等和审计？
+
+简历建议写：统一工具注册表描述角色、风险等级、只读性、幂等性、超时、重试和脱敏策略；工具执行器统一做参数校验、权限校验、审计记录，高风险工具只生成审批申请。
+
+可能追问：重复退款怎么办？回答要点是业务幂等键和审批状态控制，管理员审批前仍需重新校验订单实时状态。
+
+代码路径：`server/app/agent/tools/registry.py`、`server/app/agent/tools/executor.py`、`server/app/services/action_execution_service.py`
+
+可展示验证：`tests/test_action_execution_service.py`、`tests/test_controlled_workflow_components.py`
+
+不能夸大：不要说 LLM 直接执行退款或取消订单。
+
+### 4. 如何通过评测集、消融实验和失败案例证明改进有效？
+
+简历建议写：建立版本化售后评测集，分别评估意图识别、工具选择、风险拦截、Prompt Injection 拦截和检索消融，报告保留失败样本和失败原因，便于迭代。
+
+可能追问：评测是否等于线上效果？回答要点是当前是离线回归与工程链路验证，真实模型效果需要配置真实 LLM 和 Embedding 后单独验证。
+
+代码路径：`server/evals/datasets/after_sale_v1.jsonl`、`server/evals/run_eval.py`、`server/evals/run_retrieval_ablation.py`
+
+可展示验证：`server/evals/reports/workflow_eval_latest.json`、`server/evals/reports/retrieval_ablation_latest.json`
+
+不能夸大：没有真实运行出的提升百分比，就不要写“提升 XX%”。

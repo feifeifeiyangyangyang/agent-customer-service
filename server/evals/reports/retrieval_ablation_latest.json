@@ -1,0 +1,19 @@
+{
+  "status": "dependency_unavailable",
+  "dataset_version": "after_sale_v1",
+  "eval_config_version": "workflow-eval-v1",
+  "case_count": 18,
+  "top_k": 5,
+  "embedding_mode": "mock",
+  "warning": "当前 Dense 通道使用 Mock Embedding，消融结果只能验证工程链路，不能代表真实语义召回质量。",
+  "plans": {},
+  "failures": {},
+  "dependency_error": {
+    "type": "OperationalError",
+    "message": "(pymysql.err.OperationalError) (2003, \"Can't connect to MySQL server on '127.0.0.1'\")\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+  },
+  "notes": [
+    "Retrieval ablation requires reachable MySQL and optional Qdrant services.",
+    "This dependency failure is reported explicitly instead of being treated as low recall."
+  ]
+}

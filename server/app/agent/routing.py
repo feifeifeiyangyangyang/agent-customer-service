@@ -8,19 +8,6 @@ ORDER_NO_PATTERN = re.compile(r"(ORD[0-9A-Z]{8,})", re.IGNORECASE)
 def build_rule_based_plan(question: str) -> AgentPlan:
     clean = question.strip()
     order_ref = _extract_order_reference(clean)
-    if _is_order_list_query(clean):
-        return AgentPlan(
-            intent="ORDER_QUERY",
-            goal=clean,
-            order_reference=OrderReference(list_all=True),
-            product_reference=None,
-            required_tools=["list_my_orders"],
-            action_type=None,
-            risk_level="LOW",
-            requires_confirmation=False,
-            missing_information=[],
-            decision_reason="用户希望查看自己已下单商品或订单列表，优先查询订单列表工具。",
-        )
     if any(word in clean for word in ["取消", "撤销订单"]):
         return AgentPlan(
             intent="CANCEL_ORDER",
@@ -47,7 +34,46 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[] if order_ref or _extract_product_keyword(clean) else ["order_reference"],
             decision_reason="用户表达了退款意图，必须经过确认和管理员审批。",
         )
+    if not (order_ref and order_ref.order_no) and _is_order_list_query(clean):
+        return AgentPlan(
+            intent="ORDER_QUERY",
+            goal=clean,
+            order_reference=OrderReference(list_all=True),
+            product_reference=None,
+            required_tools=["list_my_orders"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户希望查看自己已下单商品或订单列表，优先查询订单列表工具。",
+        )
     product_ref = _extract_product_keyword(clean)
+    if order_ref and order_ref.order_no and _is_shipping_rule_query(clean):
+        return AgentPlan(
+            intent="ORDER_QUERY",
+            goal=clean,
+            order_reference=order_ref,
+            product_reference=None,
+            required_tools=["get_order_detail"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户提供了明确订单号并咨询发货规则，读取该订单商品规则和订单状态。",
+        )
+    if order_ref and order_ref.order_no and _is_shipping_query(clean):
+        return AgentPlan(
+            intent="SHIPPING_QUERY",
+            goal=clean,
+            order_reference=order_ref,
+            product_reference=product_ref,
+            required_tools=["get_order_detail"],
+            action_type=None,
+            risk_level="LOW",
+            requires_confirmation=False,
+            missing_information=[],
+            decision_reason="用户提供了明确订单号并咨询物流或发货，查询该订单真实状态。",
+        )
     if order_ref and order_ref.order_no and _is_product_info_query(clean):
         return AgentPlan(
             intent="PRODUCT_QUERY",
@@ -113,7 +139,7 @@ def build_rule_based_plan(question: str) -> AgentPlan:
             missing_information=[],
             decision_reason="用户咨询退换货、破损、售后规则，进入知识库和结构化规则检索。",
         )
-    if any(word in clean for word in ["物流", "快递", "发货", "到哪", "到哪里", "什么时候到"]):
+    if _is_shipping_query(clean):
         return AgentPlan(
             intent="SHIPPING_QUERY",
             goal=clean,
@@ -154,17 +180,50 @@ def build_rule_based_plan(question: str) -> AgentPlan:
 
 
 def _is_refund_action_request(question: str, order_ref: OrderReference | None) -> bool:
-    if not any(word in question for word in ["退款", "退钱"]):
+    if any(word in question for word in ["查询", "列出", "列出来", "所有用户"]):
         return False
-    policy_words = ["如何", "怎么", "流程", "多久", "几天", "一般", "规则", "说明", "方式"]
+    if not any(word in question for word in ["退款", "退钱", "退一下", "不想要"]):
+        return False
+    policy_words = ["如何", "怎么", "流程", "多久", "几天", "一般", "规则", "说明", "方式", "能", "可以", "吗"]
     explicit_action_words = ["我要", "想要", "不想要", "帮我", "申请", "办理", "退一下", "给我退", "这单"]
     if any(word in question for word in policy_words) and not any(word in question for word in explicit_action_words):
+        return False
+    if question.strip() in {"退一下", "退款", "退钱"}:
         return False
     return order_ref is not None or any(word in question for word in explicit_action_words)
 
 
 def _is_after_sale_policy_query(question: str) -> bool:
-    terms = ["退货", "退款", "退钱", "售后", "破损", "损坏", "包装", "拆封", "换货", "能不能退", "怎么退"]
+    terms = [
+        "退货",
+        "退款",
+        "退钱",
+        "售后",
+        "破损",
+        "损坏",
+        "包装",
+        "拆封",
+        "换货",
+        "能不能退",
+        "怎么退",
+        "漏液",
+        "污渍",
+        "坏了",
+        "质量问题",
+        "要拍什么",
+        "还能退",
+        "清洗",
+    ]
+    return any(term in question for term in terms)
+
+
+def _is_shipping_query(question: str) -> bool:
+    terms = ["物流", "快递", "发货", "到哪", "到哪里", "什么时候到", "包裹", "没动静", "出库"]
+    return any(term in question for term in terms)
+
+
+def _is_shipping_rule_query(question: str) -> bool:
+    terms = ["发货规则", "发货时效", "出库规则"]
     return any(term in question for term in terms)
 
 
@@ -173,6 +232,7 @@ def _is_product_rule_query(question: str) -> bool:
         "发货规则",
         "发货时效",
         "出库规则",
+        "多久出库",
         "售后规则",
         "库存",
         "价格",

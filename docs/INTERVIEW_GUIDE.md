@@ -60,3 +60,75 @@ Worker 通过条件更新把任务从 `PENDING` 抢占为 `PROCESSING`，检查�
 - 重排是启发式重排，不是真实 Cross-Encoder。
 - LangGraph 不是多 Agent 编排。
 - LLM 规划只是候选计划，必须经过确定性策略层二次校验。
+
+## 10. 评测系统怎么讲？
+
+项目新增 `server/evals/`，包含版本化评测集 `after_sale_v1` 和两个命令行评测器。
+
+规划与安全路由评测：
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m evals.run_eval --output evals\reports\workflow_eval_latest.json --pretty
+```
+
+检索消融实验：
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m evals.run_retrieval_ablation --output evals\reports\retrieval_ablation_latest.json --pretty
+```
+
+评测集当前有 63 条样本，覆盖商品咨询、订单查询、物流发货、退款规则、退款操作、取消订单、破损售后、无答案拒答、信息不完整澄清、Prompt Injection、越权查询、多轮指代和检索通道故障。样本中保存期望意图、期望工具、风险等级、是否需要确认、期望召回来源和禁止出现的事实。
+
+面试边界：`run_eval` 主要验证结构化规划和安全路由，不代表真实大模型回答质量。检索消融依赖 MySQL 和 Qdrant；默认 Mock Embedding 只能验证工程链路，不代表真实语义召回。
+
+## 11. 设计取舍与面试追问
+
+### 为什么选择受控 Workflow，而不是完全自主 Agent？
+
+简历可以写：将客服链路拆成输入守卫、结构化规划、策略校验、工具执行、RAG、人工审批和审计收口，限制模型只生成候选计划，业务副作用由确定性代码执行。
+
+面试官可能追问：为什么不让模型直接退款？回答时强调订单归属、状态机、幂等、审批和审计必须由服务端保证，LLM 不能作为权限边界。
+
+代码路径：`server/app/agent/routing.py`、`server/app/agent/tools/executor.py`、`server/app/services/agent_service.py`
+
+可展示：`python -m evals.run_eval`、`tests/test_agent_routing.py`、`tests/test_tool_registry.py`
+
+不能夸大：不是 Multi-Agent，不是开放式 ReAct。
+
+### 为什么使用关键词、Dense Vector、结构化规则三路召回？
+
+简历可以写：针对商品型号、订单时效和售后状态难以靠纯向量稳定处理的问题，实现关键词、Dense Vector 与结构化规则三路混合召回，并使用 RRF 融合和启发式重排。
+
+面试官可能追问：三路分别解决什么问题？关键词处理型号和政策术语，Dense 处理口语化表达，结构化规则处理订单状态、售后类型、规则版本和有效期。
+
+代码路径：`server/app/services/knowledge_service.py`、`server/app/schemas/retrieval.py`、`server/app/rag/retrieval_config.py`
+
+可展示：`python -m evals.run_retrieval_ablation`
+
+不能夸大：默认 Mock Embedding 不代表真实语义检索；当前没有真实 Cross-Encoder。
+
+### 模型生成工具调用后，系统如何保证权限、安全、幂等和审计？
+
+简历可以写：统一工具注册表描述角色、风险等级、只读性、幂等性、超时、重试和脱敏策略；执行器统一做参数校验、权限校验、审计记录，高风险工具只生成审批申请。
+
+面试官可能追问：重复退款怎么办？回答时说明业务幂等键、审批状态控制和审批前实时订单状态校验。
+
+代码路径：`server/app/agent/tools/registry.py`、`server/app/agent/tools/executor.py`、`server/app/services/action_execution_service.py`
+
+可展示：`tests/test_action_execution_service.py`、`tests/test_controlled_workflow_components.py`
+
+不能夸大：不要说 LLM 直接执行退款或取消订单。
+
+### 如何通过评测集、消融实验和失败案例证明改进有效？
+
+简历可以写：建立版本化售后评测集，分别评估意图识别、工具选择、风险拦截、Prompt Injection 拦截和检索消融，报告保留失败样本和失败原因。
+
+面试官可能追问：评测是否等于线上效果？回答时说明当前是离线回归与工程链路验证，真实模型效果需要配置真实 LLM 和 Embedding 后单独验证。
+
+代码路径：`server/evals/datasets/after_sale_v1.jsonl`、`server/evals/run_eval.py`、`server/evals/run_retrieval_ablation.py`
+
+可展示：`server/evals/reports/workflow_eval_latest.json`、`server/evals/reports/retrieval_ablation_latest.json`
+
+不能夸大：没有真实执行结果时，不写提升百分比。
