@@ -1,19 +1,1419 @@
 {
-  "status": "dependency_unavailable",
+  "status": "completed",
   "dataset_version": "after_sale_v1",
   "eval_config_version": "workflow-eval-v1",
   "case_count": 18,
   "top_k": 5,
   "embedding_mode": "mock",
   "warning": "当前 Dense 通道使用 Mock Embedding，消融结果只能验证工程链路，不能代表真实语义召回质量。",
-  "plans": {},
-  "failures": {},
-  "dependency_error": {
-    "type": "OperationalError",
-    "message": "(pymysql.err.OperationalError) (2003, \"Can't connect to MySQL server on '127.0.0.1'\")\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+  "plans": {
+    "keyword_only": {
+      "channels": [
+        "keyword"
+      ],
+      "recall_at_k": 0.5,
+      "mrr": 0.5,
+      "average_latency_ms": 3.89,
+      "category_recall_at_k": {
+        "after_sale_damage": 0.6667,
+        "clarification": 0.0,
+        "multi_turn": 0.0,
+        "refund_policy": 0.6667,
+        "retrieval_failure": 0.3333
+      }
+    },
+    "dense_only": {
+      "channels": [
+        "dense"
+      ],
+      "recall_at_k": 0.1111,
+      "mrr": 0.1111,
+      "average_latency_ms": 142.78,
+      "category_recall_at_k": {
+        "after_sale_damage": 0.0,
+        "clarification": 0.0,
+        "multi_turn": 0.0,
+        "refund_policy": 0.3333,
+        "retrieval_failure": 0.0
+      }
+    },
+    "keyword_dense": {
+      "channels": [
+        "keyword",
+        "dense"
+      ],
+      "recall_at_k": 0.5,
+      "mrr": 0.5,
+      "average_latency_ms": 17.61,
+      "category_recall_at_k": {
+        "after_sale_damage": 0.6667,
+        "clarification": 0.0,
+        "multi_turn": 0.0,
+        "refund_policy": 0.6667,
+        "retrieval_failure": 0.3333
+      }
+    },
+    "all_raw": {
+      "channels": [
+        "keyword",
+        "dense",
+        "structured"
+      ],
+      "recall_at_k": 0.5,
+      "mrr": 0.5,
+      "average_latency_ms": 20.39,
+      "category_recall_at_k": {
+        "after_sale_damage": 0.6667,
+        "clarification": 0.0,
+        "multi_turn": 0.0,
+        "refund_policy": 0.6667,
+        "retrieval_failure": 0.3333
+      }
+    },
+    "all_rrf": {
+      "channels": [
+        "keyword",
+        "dense",
+        "structured",
+        "rrf"
+      ],
+      "recall_at_k": 1.0,
+      "mrr": 0.6917,
+      "average_latency_ms": 20.78,
+      "category_recall_at_k": {
+        "after_sale_damage": 1.0,
+        "clarification": 1.0,
+        "multi_turn": 1.0,
+        "refund_policy": 1.0,
+        "retrieval_failure": 1.0
+      }
+    },
+    "all_rrf_rerank": {
+      "channels": [
+        "keyword",
+        "dense",
+        "structured",
+        "rrf",
+        "rerank"
+      ],
+      "recall_at_k": 1.0,
+      "mrr": 0.9444,
+      "average_latency_ms": 22.11,
+      "category_recall_at_k": {
+        "after_sale_damage": 1.0,
+        "clarification": 1.0,
+        "multi_turn": 1.0,
+        "refund_policy": 1.0,
+        "retrieval_failure": 1.0
+      }
+    }
   },
-  "notes": [
-    "Retrieval ablation requires reachable MySQL and optional Qdrant services.",
-    "This dependency failure is reported explicitly instead of being treated as low recall."
-  ]
+  "failures": {
+    "keyword_only": [
+      {
+        "case_id": "refund_policy_003",
+        "category": "refund_policy",
+        "question": "保温杯拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "refund_policy_006",
+        "category": "refund_policy",
+        "question": "商品已经清洗了还能退靠枕吗？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [],
+        "top_candidates": []
+      },
+      {
+        "case_id": "damage_004",
+        "category": "after_sale_damage",
+        "question": "这个包装破损能退吗",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          }
+        ]
+      },
+      {
+        "case_id": "damage_005",
+        "category": "after_sale_damage",
+        "question": "洗面巾拆开后发现有污渍怎么办？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [],
+        "top_candidates": []
+      },
+      {
+        "case_id": "clarification_001",
+        "category": "clarification",
+        "question": "这个能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [],
+        "top_candidates": []
+      },
+      {
+        "case_id": "multi_turn_001",
+        "category": "multi_turn",
+        "question": "第二个能退款吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_004",
+        "category": "multi_turn",
+        "question": "这个拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_001",
+        "category": "retrieval_failure",
+        "question": "收到商品坏了怎么办？",
+        "expected_source_types": [
+          "keyword",
+          "structured_rule"
+        ],
+        "actual_source_types": [],
+        "top_candidates": []
+      },
+      {
+        "case_id": "retrieval_failure_003",
+        "category": "retrieval_failure",
+        "question": "商品拆封还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      }
+    ],
+    "dense_only": [
+      {
+        "case_id": "refund_policy_003",
+        "category": "refund_policy",
+        "question": "保温杯拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:16",
+            "source_type": "dense_vector",
+            "score": 0.07509804
+          },
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.05041428
+          },
+          {
+            "candidate_id": "chunk:3",
+            "source_type": "dense_vector",
+            "score": 0.04407636
+          }
+        ]
+      },
+      {
+        "case_id": "refund_policy_004",
+        "category": "refund_policy",
+        "question": "签收后几天还能申请售后？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.07944481
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.058709353
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.047451966
+          }
+        ]
+      },
+      {
+        "case_id": "refund_policy_005",
+        "category": "refund_policy",
+        "question": "质量问题可以换货吗？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.08243447
+          },
+          {
+            "candidate_id": "chunk:18",
+            "source_type": "dense_vector",
+            "score": 0.07393314
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "dense_vector",
+            "score": 0.07327233
+          }
+        ]
+      },
+      {
+        "case_id": "refund_policy_006",
+        "category": "refund_policy",
+        "question": "商品已经清洗了还能退靠枕吗？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.14045717
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.070779786
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.049260624
+          }
+        ]
+      },
+      {
+        "case_id": "damage_001",
+        "category": "after_sale_damage",
+        "question": "收到破损商品怎么办？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.07584827
+          },
+          {
+            "candidate_id": "chunk:1",
+            "source_type": "dense_vector",
+            "score": 0.046432067
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.041989174
+          }
+        ]
+      },
+      {
+        "case_id": "damage_002",
+        "category": "after_sale_damage",
+        "question": "商品包装破损，但是里面没坏，怎么处理？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "dense_vector",
+            "score": 0.13665879
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.053227283
+          },
+          {
+            "candidate_id": "chunk:16",
+            "source_type": "dense_vector",
+            "score": 0.040871162
+          }
+        ]
+      },
+      {
+        "case_id": "damage_003",
+        "category": "after_sale_damage",
+        "question": "杯子漏液算质量问题吗？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.080157354
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.047544148
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.013706449
+          }
+        ]
+      },
+      {
+        "case_id": "damage_004",
+        "category": "after_sale_damage",
+        "question": "这个包装破损能退吗",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.13708669
+          },
+          {
+            "candidate_id": "chunk:1",
+            "source_type": "dense_vector",
+            "score": 0.076914504
+          },
+          {
+            "candidate_id": "chunk:3",
+            "source_type": "dense_vector",
+            "score": 0.070625275
+          }
+        ]
+      },
+      {
+        "case_id": "damage_005",
+        "category": "after_sale_damage",
+        "question": "洗面巾拆开后发现有污渍怎么办？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.11259486
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.094998844
+          },
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.06710766
+          }
+        ]
+      },
+      {
+        "case_id": "damage_006",
+        "category": "after_sale_damage",
+        "question": "快递盒压坏了要拍什么？",
+        "expected_source_types": [
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:16",
+            "source_type": "dense_vector",
+            "score": 0.06739487
+          },
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.03524092
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.0151434345
+          }
+        ]
+      },
+      {
+        "case_id": "clarification_001",
+        "category": "clarification",
+        "question": "这个能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.05674309
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.03447765
+          },
+          {
+            "candidate_id": "chunk:18",
+            "source_type": "dense_vector",
+            "score": 0.026961688
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_001",
+        "category": "multi_turn",
+        "question": "第二个能退款吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:1",
+            "source_type": "dense_vector",
+            "score": 0.068928316
+          },
+          {
+            "candidate_id": "chunk:3",
+            "source_type": "dense_vector",
+            "score": 0.0128181465
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "dense_vector",
+            "score": 0.0022092918
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_004",
+        "category": "multi_turn",
+        "question": "这个拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.041479327
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.023258489
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.017694172
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_001",
+        "category": "retrieval_failure",
+        "question": "收到商品坏了怎么办？",
+        "expected_source_types": [
+          "keyword",
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "dense_vector",
+            "score": 0.08925924
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.049901932
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.043129824
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_002",
+        "category": "retrieval_failure",
+        "question": "退货政策是什么？",
+        "expected_source_types": [
+          "keyword",
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.07208054
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "dense_vector",
+            "score": 0.054002665
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.045171153
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_003",
+        "category": "retrieval_failure",
+        "question": "商品拆封还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "dense_vector",
+            "score": 0.047868833
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.03388842
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.0051834267
+          }
+        ]
+      }
+    ],
+    "keyword_dense": [
+      {
+        "case_id": "refund_policy_003",
+        "category": "refund_policy",
+        "question": "保温杯拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "refund_policy_006",
+        "category": "refund_policy",
+        "question": "商品已经清洗了还能退靠枕吗？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.14045717
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.070779786
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.049260624
+          }
+        ]
+      },
+      {
+        "case_id": "damage_004",
+        "category": "after_sale_damage",
+        "question": "这个包装破损能退吗",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          }
+        ]
+      },
+      {
+        "case_id": "damage_005",
+        "category": "after_sale_damage",
+        "question": "洗面巾拆开后发现有污渍怎么办？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.11259486
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.094998844
+          },
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.06710766
+          }
+        ]
+      },
+      {
+        "case_id": "clarification_001",
+        "category": "clarification",
+        "question": "这个能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.05674309
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.03447765
+          },
+          {
+            "candidate_id": "chunk:18",
+            "source_type": "dense_vector",
+            "score": 0.026961688
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_001",
+        "category": "multi_turn",
+        "question": "第二个能退款吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_004",
+        "category": "multi_turn",
+        "question": "这个拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_001",
+        "category": "retrieval_failure",
+        "question": "收到商品坏了怎么办？",
+        "expected_source_types": [
+          "keyword",
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "dense_vector",
+            "score": 0.08925924
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.049901932
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.043129824
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_003",
+        "category": "retrieval_failure",
+        "question": "商品拆封还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      }
+    ],
+    "all_raw": [
+      {
+        "case_id": "refund_policy_003",
+        "category": "refund_policy",
+        "question": "保温杯拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "refund_policy_006",
+        "category": "refund_policy",
+        "question": "商品已经清洗了还能退靠枕吗？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.14045717
+          },
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.070779786
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.049260624
+          }
+        ]
+      },
+      {
+        "case_id": "damage_004",
+        "category": "after_sale_damage",
+        "question": "这个包装破损能退吗",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "keyword",
+          "keyword"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.6499999999999999
+          }
+        ]
+      },
+      {
+        "case_id": "damage_005",
+        "category": "after_sale_damage",
+        "question": "洗面巾拆开后发现有污渍怎么办？",
+        "expected_source_types": [
+          "structured_rule",
+          "keyword"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:11",
+            "source_type": "dense_vector",
+            "score": 0.11259486
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.094998844
+          },
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.06710766
+          }
+        ]
+      },
+      {
+        "case_id": "clarification_001",
+        "category": "clarification",
+        "question": "这个能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:14",
+            "source_type": "dense_vector",
+            "score": 0.05674309
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "dense_vector",
+            "score": 0.03447765
+          },
+          {
+            "candidate_id": "chunk:18",
+            "source_type": "dense_vector",
+            "score": 0.026961688
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_001",
+        "category": "multi_turn",
+        "question": "第二个能退款吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:12",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "multi_turn_004",
+        "category": "multi_turn",
+        "question": "这个拆封后还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_001",
+        "category": "retrieval_failure",
+        "question": "收到商品坏了怎么办？",
+        "expected_source_types": [
+          "keyword",
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "dense_vector",
+            "score": 0.08925924
+          },
+          {
+            "candidate_id": "chunk:17",
+            "source_type": "dense_vector",
+            "score": 0.049901932
+          },
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "dense_vector",
+            "score": 0.043129824
+          }
+        ]
+      },
+      {
+        "case_id": "retrieval_failure_003",
+        "category": "retrieval_failure",
+        "question": "商品拆封还能退吗？",
+        "expected_source_types": [
+          "structured_rule"
+        ],
+        "actual_source_types": [
+          "keyword",
+          "keyword",
+          "keyword",
+          "dense_vector",
+          "dense_vector"
+        ],
+        "top_candidates": [
+          {
+            "candidate_id": "chunk:19",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:13",
+            "source_type": "keyword",
+            "score": 0.5
+          },
+          {
+            "candidate_id": "chunk:15",
+            "source_type": "keyword",
+            "score": 0.5
+          }
+        ]
+      }
+    ]
+  }
 }
