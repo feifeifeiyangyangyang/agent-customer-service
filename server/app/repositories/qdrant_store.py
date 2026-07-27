@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,7 @@ from qdrant_client.http.models import (
 from app.core.config import settings
 
 COLLECTION_NAME = "zhifutong_kb_chunks"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -95,9 +97,15 @@ class QdrantKnowledgeStore:
             vector_config = getattr(getattr(getattr(info, "config", None), "params", None), "vectors", None)
             actual_size = getattr(vector_config, "size", None)
             if actual_size is not None and int(actual_size) != settings.embedding_dimension:
-                raise RuntimeError(
-                    "Qdrant collection dimension mismatch: "
-                    f"actual={actual_size}, expected={settings.embedding_dimension}"
+                logger.warning(
+                    "Recreating Qdrant collection due to embedding dimension change: actual=%s expected=%s",
+                    actual_size,
+                    settings.embedding_dimension,
+                )
+                await client.delete_collection(COLLECTION_NAME)
+                await client.create_collection(
+                    collection_name=COLLECTION_NAME,
+                    vectors_config=VectorParams(size=settings.embedding_dimension, distance=Distance.COSINE),
                 )
             return
         except RuntimeError:

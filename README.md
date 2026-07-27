@@ -239,6 +239,22 @@ EMBEDDING_MODEL_NAME=text-embedding-3-small
 EMBEDDING_DIMENSION=384
 ```
 
+智谱 GLM Embedding 示例：
+
+```text
+EMBEDDING_MOCK_ENABLED=false
+EMBEDDING_API_KEY=
+EMBEDDING_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+EMBEDDING_MODEL_NAME=embedding-3
+EMBEDDING_DIMENSION=1024
+```
+
+说明：
+
+- 智谱 Embedding 走 `/embeddings` 接口；项目会根据 `/v4` 结尾自动拼接正确路径。
+- `embedding-3` 支持通过 `dimensions` 指定输出维度，项目会把 `EMBEDDING_DIMENSION` 传给接口。
+- 切换真实 Embedding 或修改维度后，需要重新执行 `scripts/sync_demo_knowledge.py`，系统会在维度变化时重建 Qdrant collection，避免新旧向量混用。
+
 安全要求：
 
 - 不要把真实 API Key 写入源码。
