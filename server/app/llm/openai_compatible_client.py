@@ -23,10 +23,18 @@ class OpenAICompatibleLLMClient:
                 {
                     "role": "system",
                     "content": (
-                        "你是受控客服Workflow的结构化规划节点。只输出JSON对象。"
-                        "字段: intent, goal, order_reference, product_reference, required_tools, action_type, "
-                        "risk_level, requires_confirmation, missing_information, decision_reason。"
+                        "你是受控客服Workflow的结构化规划节点。只能输出一个JSON对象，不能包裹AgentPlan字段。"
+                        "intent只能取: ORDER_QUERY, SHIPPING_QUERY, PRODUCT_QUERY, KNOWLEDGE_QUERY, "
+                        "CANCEL_ORDER, REFUND_REQUEST, CREATE_TICKET, CLARIFICATION。"
+                        "risk_level只能取: LOW, MEDIUM, HIGH, FORBIDDEN。"
+                        "required_tools只能取: get_order_detail, list_my_orders, search_knowledge_base, "
+                        "request_refund, request_order_cancellation, create_support_ticket。"
                         "模型只做候选规划，不能声称已执行工具或修改数据库。"
+                        '输出示例: {"intent":"SHIPPING_QUERY","goal":"查询最近订单物流",'
+                        '"order_reference":{"order_no":null,"ordinal_index":null,"product_keyword":null,'
+                        '"latest":true,"list_all":false},"product_reference":null,'
+                        '"required_tools":["list_my_orders"],"action_type":null,"risk_level":"LOW",'
+                        '"requires_confirmation":false,"missing_information":[],"decision_reason":"用户查询最近订单物流"}'
                     ),
                 },
                 {"role": "user", "content": question[:500]},
@@ -47,7 +55,11 @@ class OpenAICompatibleLLMClient:
                 "response_format": {"type": "json_object"},
             }
             repaired = await self._chat(repair_payload)
-            return AgentPlan.model_validate(_json_loads(repaired))
+            try:
+                return AgentPlan.model_validate(_json_loads(repaired))
+            except Exception as exc:
+                logger.warning("LLM plan output failed schema validation; using deterministic fallback: %s", exc)
+                return None
 
     async def answer(self, question: str, evidence: str, draft_answer: str) -> GroundedAnswer | None:
         payload = {
@@ -71,7 +83,11 @@ class OpenAICompatibleLLMClient:
             "response_format": {"type": "json_object"},
         }
         content = await self._chat(payload)
-        return GroundedAnswer.model_validate(_json_loads(content))
+        try:
+            return GroundedAnswer.model_validate(_json_loads(content))
+        except Exception as exc:
+            logger.warning("LLM answer output failed schema validation; using deterministic draft: %s", exc)
+            return None
 
     async def _chat(self, payload: dict[str, Any]) -> str:
         if not settings.llm_api_key:
@@ -81,7 +97,7 @@ class OpenAICompatibleLLMClient:
             try:
                 async with httpx.AsyncClient(timeout=12) as client:
                     response = await client.post(
-                        f"{settings.llm_base_url.rstrip('/')}/v1/chat/completions",
+                        self._endpoint(),
                         headers={"Authorization": f"Bearer {settings.llm_api_key}"},
                         json=payload,
                     )
@@ -100,12 +116,24 @@ class OpenAICompatibleLLMClient:
                 break
         raise LLMProviderError(type(last_error).__name__ if last_error else "unknown", "PROVIDER_CALL_FAILED")
 
+    def _endpoint(self) -> str:
+        base_url = settings.llm_base_url.rstrip("/")
+        if base_url.endswith(("/v1", "/v4")):
+            return f"{base_url}/chat/completions"
+        return f"{base_url}/v1/chat/completions"
+
 
 def _json_loads(content: str) -> dict[str, Any]:
     clean = content.strip()
     if clean.startswith("```"):
         clean = clean.strip("`").removeprefix("json").strip()
     value = json.loads(clean)
+    if isinstance(value, dict) and set(value) == {"AgentPlan"} and isinstance(value["AgentPlan"], dict):
+        value = value["AgentPlan"]
+    if isinstance(value, dict) and set(value) == {"GroundedAnswer"} and isinstance(value["GroundedAnswer"], dict):
+        value = value["GroundedAnswer"]
+    if isinstance(value, dict) and "confidence_level" in value and not isinstance(value["confidence_level"], str):
+        value["confidence_level"] = str(value["confidence_level"])
     if not isinstance(value, dict):
         raise ValueError("LLM returned non-object JSON")
     return value
