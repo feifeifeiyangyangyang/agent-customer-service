@@ -16,7 +16,7 @@ web/node_modules/
 web/dist/
 
 data/
-models/
+/models/
 *.sqlite
 *.db
 *.log
