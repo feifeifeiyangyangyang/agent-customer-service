@@ -166,6 +166,7 @@ class DocumentProcessingService:
                 raise AppError("文档未提取到有效文本", 400)
 
             await session.execute(delete(KbChunk).where(KbChunk.document_id == document.id))
+            await qdrant_store.delete_document(document.id)
             rows: list[tuple[KbChunk, str]] = []
             for chunk in chunks:
                 point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"kb:{document.id}:{chunk.index}:{chunk.content_hash}"))
