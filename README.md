@@ -363,7 +363,7 @@ cd server
 
 RAGAS 默认评估 `faithfulness`、`answer_relevancy`、`context_precision`、`context_recall`。其中 RAGAS 属于 LLM-as-Judge 质量评估；确定性的召回率、MRR、失败样本仍以 `run_retrieval_ablation` 为准。
 
-当前提交附带的 smoke 报告为 3 条真实 Agent 回答样本，结果保存在 `server/evals/reports/ragas_eval_latest.json`：`faithfulness=0.6667`、`answer_relevancy=0.4647`、`context_precision=1.0`、`context_recall=0.6667`。其中“退货包运费吗”样本被 RAGAS 打低，说明评测能暴露回答偏离问题，而不是只挑成功案例。
+当前提交附带的 smoke 报告为 7 条真实 Agent 回答样本，结果保存在 `server/evals/reports/ragas_eval_latest.json`：`faithfulness=0.8571`、`answer_relevancy=0.4394`、`context_precision=0.8571`、`context_recall=0.5`。其中“退货包运费吗”和“商品已经清洗了还能退靠枕吗”样本被 RAGAS 打低，说明评测能暴露回答偏离、拒答召回为空等问题，而不是只挑成功案例。
 
 边界说明：
 
