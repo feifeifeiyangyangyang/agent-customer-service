@@ -5,6 +5,7 @@
 .idea/
 .vscode/
 .venv/
+server/.ragas-venv/
 server/.pip-tmp/
 *.egg-info/
 __pycache__/

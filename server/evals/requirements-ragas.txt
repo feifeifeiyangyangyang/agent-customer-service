@@ -1,0 +1,6 @@
+ragas==0.2.8
+datasets
+langchain-core==0.3.72
+langchain==0.3.27
+langchain-community==0.3.27
+langchain-openai==0.3.28

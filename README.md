@@ -337,11 +337,40 @@ cd server
 
 消融实验支持 Keyword only、Dense only、Keyword + Dense、Keyword + Dense + Structured Rule、三路召回 + RRF、三路召回 + RRF + 启发式重排。报告输出 Recall@K、MRR、分类召回、失败样本和平均检索耗时。
 
+RAGAS 评测：
+
+RAGAS 依赖较新的 LangChain/LangGraph 生态，和主后端固定依赖不完全兼容。为避免评测依赖污染运行环境，建议单独创建隔离环境：
+
+```powershell
+cd server
+py -3.12 -m venv .ragas-venv
+.\.ragas-venv\Scripts\python.exe -m pip install -r evals\requirements-ragas.txt
+```
+
+先用主后端环境生成 RAGAS 输入样本。该步骤会调用当前 `AgentService.chat()` 生成真实客服回答，并将对应召回上下文写入 RAGAS 数据集；日常演示可先用 `--limit` 控制样本数：
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe -m evals.build_ragas_dataset --top-k 3 --limit 3 --output evals\reports\ragas_dataset_latest.json --pretty
+```
+
+再用隔离环境执行 RAGAS 指标：
+
+```powershell
+cd server
+.\.ragas-venv\Scripts\python.exe -m evals.run_ragas_eval --input evals\reports\ragas_dataset_latest.json --output evals\reports\ragas_eval_latest.json --limit 8 --pretty
+```
+
+RAGAS 默认评估 `faithfulness`、`answer_relevancy`、`context_precision`、`context_recall`。其中 RAGAS 属于 LLM-as-Judge 质量评估；确定性的召回率、MRR、失败样本仍以 `run_retrieval_ablation` 为准。
+
+当前提交附带的 smoke 报告为 3 条真实 Agent 回答样本，结果保存在 `server/evals/reports/ragas_eval_latest.json`：`faithfulness=0.6667`、`answer_relevancy=0.4647`、`context_precision=1.0`、`context_recall=0.6667`。其中“退货包运费吗”样本被 RAGAS 打低，说明评测能暴露回答偏离问题，而不是只挑成功案例。
+
 边界说明：
 
 - `run_eval` 评估的是结构化规划、工具选择、风险等级和确认拦截，不等同于真实 LLM 生成质量。
 - 检索消融需要 MySQL 可用，Dense 通道需要 Qdrant 可用。
 - 默认 `EMBEDDING_MOCK_ENABLED=true` 时，Dense 结果只能说明向量库链路可跑，不能证明真实语义召回效果。
+- RAGAS 需要真实可用的 Judge LLM 和 Embedding Key，评测依赖必须和主后端依赖隔离。
 
 ## 设计取舍与面试追问
 
