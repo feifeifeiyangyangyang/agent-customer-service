@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings==2.10.1",
     "sqlalchemy[asyncio]==2.0.41",
     "aiomysql==0.2.0",
+    "cryptography==49.0.0",
     "alembic==1.16.4",
     "PyJWT==2.10.1",
     "passlib[bcrypt]==1.7.4",

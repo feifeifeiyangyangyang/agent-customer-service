@@ -4,8 +4,8 @@
   "eval_config_version": "workflow-eval-v1",
   "case_count": 18,
   "top_k": 5,
-  "embedding_mode": "mock",
-  "warning": "当前 Dense 通道使用 Mock Embedding，消融结果只能验证工程链路，不能代表真实语义召回质量。",
+  "embedding_mode": "openai_compatible",
+  "warning": null,
   "plans": {
     "keyword_only": {
       "channels": [
@@ -13,7 +13,7 @@
       ],
       "recall_at_k": 0.5,
       "mrr": 0.5,
-      "average_latency_ms": 3.89,
+      "average_latency_ms": 7.61,
       "category_recall_at_k": {
         "after_sale_damage": 0.6667,
         "clarification": 0.0,
@@ -28,7 +28,7 @@
       ],
       "recall_at_k": 0.1111,
       "mrr": 0.1111,
-      "average_latency_ms": 142.78,
+      "average_latency_ms": 2637.11,
       "category_recall_at_k": {
         "after_sale_damage": 0.0,
         "clarification": 0.0,
@@ -44,7 +44,7 @@
       ],
       "recall_at_k": 0.5,
       "mrr": 0.5,
-      "average_latency_ms": 17.61,
+      "average_latency_ms": 2639.22,
       "category_recall_at_k": {
         "after_sale_damage": 0.6667,
         "clarification": 0.0,
@@ -61,7 +61,7 @@
       ],
       "recall_at_k": 0.5,
       "mrr": 0.5,
-      "average_latency_ms": 20.39,
+      "average_latency_ms": 2599.17,
       "category_recall_at_k": {
         "after_sale_damage": 0.6667,
         "clarification": 0.0,
@@ -78,8 +78,8 @@
         "rrf"
       ],
       "recall_at_k": 1.0,
-      "mrr": 0.6917,
-      "average_latency_ms": 20.78,
+      "mrr": 0.4528,
+      "average_latency_ms": 2602.06,
       "category_recall_at_k": {
         "after_sale_damage": 1.0,
         "clarification": 1.0,
@@ -97,8 +97,8 @@
         "rerank"
       ],
       "recall_at_k": 1.0,
-      "mrr": 0.9444,
-      "average_latency_ms": 22.11,
+      "mrr": 0.8861,
+      "average_latency_ms": 2588.17,
       "category_recall_at_k": {
         "after_sale_damage": 1.0,
         "clarification": 1.0,
@@ -124,17 +124,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -167,17 +167,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.6499999999999999
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:35",
             "source_type": "keyword",
             "score": 0.6499999999999999
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:34",
             "source_type": "keyword",
             "score": 0.6499999999999999
           }
@@ -218,17 +218,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:35",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:30",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -248,17 +248,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -289,17 +289,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -323,19 +323,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:16",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.07509804
+            "score": 0.6524778
           },
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.05041428
+            "score": 0.64292896
           },
           {
-            "candidate_id": "chunk:3",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.04407636
+            "score": 0.5625383
           }
         ]
       },
@@ -356,19 +356,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.07944481
+            "score": 0.6427547
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.058709353
+            "score": 0.62611496
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.047451966
+            "score": 0.60980594
           }
         ]
       },
@@ -389,19 +389,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.08243447
+            "score": 0.6784804
           },
           {
-            "candidate_id": "chunk:18",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.07393314
+            "score": 0.6717371
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.07327233
+            "score": 0.6006701
           }
         ]
       },
@@ -422,19 +422,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.14045717
+            "score": 0.6675024
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.070779786
+            "score": 0.6450001
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:34",
             "source_type": "dense_vector",
-            "score": 0.049260624
+            "score": 0.631045
           }
         ]
       },
@@ -455,19 +455,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.07584827
+            "score": 0.69178224
           },
           {
-            "candidate_id": "chunk:1",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.046432067
+            "score": 0.68029886
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.041989174
+            "score": 0.6432631
           }
         ]
       },
@@ -488,19 +488,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.13665879
+            "score": 0.647275
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.053227283
+            "score": 0.6415037
           },
           {
-            "candidate_id": "chunk:16",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.040871162
+            "score": 0.605852
           }
         ]
       },
@@ -521,19 +521,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.080157354
+            "score": 0.58091474
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.047544148
+            "score": 0.56383264
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.013706449
+            "score": 0.55090237
           }
         ]
       },
@@ -553,19 +553,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.13708669
+            "score": 0.6884691
           },
           {
-            "candidate_id": "chunk:1",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.076914504
+            "score": 0.6739216
           },
           {
-            "candidate_id": "chunk:3",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.070625275
+            "score": 0.6287098
           }
         ]
       },
@@ -586,19 +586,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:33",
             "source_type": "dense_vector",
-            "score": 0.11259486
+            "score": 0.55035615
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.094998844
+            "score": 0.53645337
           },
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.06710766
+            "score": 0.53318584
           }
         ]
       },
@@ -618,19 +618,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:16",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.06739487
+            "score": 0.5544187
           },
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.03524092
+            "score": 0.5471301
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.0151434345
+            "score": 0.52708733
           }
         ]
       },
@@ -650,19 +650,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.05674309
+            "score": 0.63842666
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.03447765
+            "score": 0.63153356
           },
           {
-            "candidate_id": "chunk:18",
+            "candidate_id": "chunk:30",
             "source_type": "dense_vector",
-            "score": 0.026961688
+            "score": 0.5810765
           }
         ]
       },
@@ -682,19 +682,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:1",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.068928316
+            "score": 0.618773
           },
           {
-            "candidate_id": "chunk:3",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.0128181465
+            "score": 0.6137458
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:30",
             "source_type": "dense_vector",
-            "score": 0.0022092918
+            "score": 0.60663927
           }
         ]
       },
@@ -714,19 +714,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.041479327
+            "score": 0.7193071
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.023258489
+            "score": 0.70472664
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.017694172
+            "score": 0.6047127
           }
         ]
       },
@@ -747,19 +747,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.08925924
+            "score": 0.6789142
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.049901932
+            "score": 0.66926444
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.043129824
+            "score": 0.65685004
           }
         ]
       },
@@ -780,19 +780,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.07208054
+            "score": 0.6864437
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.054002665
+            "score": 0.6756518
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.045171153
+            "score": 0.60254216
           }
         ]
       },
@@ -812,19 +812,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.047868833
+            "score": 0.70121765
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.03388842
+            "score": 0.68881166
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.0051834267
+            "score": 0.60253197
           }
         ]
       }
@@ -846,17 +846,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -879,19 +879,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.14045717
+            "score": 0.6675024
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.070779786
+            "score": 0.6450001
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:34",
             "source_type": "dense_vector",
-            "score": 0.049260624
+            "score": 0.631045
           }
         ]
       },
@@ -911,17 +911,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.6499999999999999
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:35",
             "source_type": "keyword",
             "score": 0.6499999999999999
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:34",
             "source_type": "keyword",
             "score": 0.6499999999999999
           }
@@ -944,19 +944,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:33",
             "source_type": "dense_vector",
-            "score": 0.11259486
+            "score": 0.55035615
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.094998844
+            "score": 0.53645337
           },
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.06710766
+            "score": 0.53318584
           }
         ]
       },
@@ -976,19 +976,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.05674309
+            "score": 0.63842666
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.03447765
+            "score": 0.63153356
           },
           {
-            "candidate_id": "chunk:18",
+            "candidate_id": "chunk:30",
             "source_type": "dense_vector",
-            "score": 0.026961688
+            "score": 0.5810765
           }
         ]
       },
@@ -1008,17 +1008,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:35",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:30",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -1040,17 +1040,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -1073,19 +1073,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.08925924
+            "score": 0.6789142
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.049901932
+            "score": 0.66926444
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.043129824
+            "score": 0.65685004
           }
         ]
       },
@@ -1105,17 +1105,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -1139,17 +1139,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -1172,19 +1172,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.14045717
+            "score": 0.6675024
           },
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.070779786
+            "score": 0.6450001
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:34",
             "source_type": "dense_vector",
-            "score": 0.049260624
+            "score": 0.631045
           }
         ]
       },
@@ -1204,17 +1204,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.6499999999999999
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:35",
             "source_type": "keyword",
             "score": 0.6499999999999999
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:34",
             "source_type": "keyword",
             "score": 0.6499999999999999
           }
@@ -1237,19 +1237,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:11",
+            "candidate_id": "chunk:33",
             "source_type": "dense_vector",
-            "score": 0.11259486
+            "score": 0.55035615
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.094998844
+            "score": 0.53645337
           },
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.06710766
+            "score": 0.53318584
           }
         ]
       },
@@ -1269,19 +1269,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:14",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.05674309
+            "score": 0.63842666
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.03447765
+            "score": 0.63153356
           },
           {
-            "candidate_id": "chunk:18",
+            "candidate_id": "chunk:30",
             "source_type": "dense_vector",
-            "score": 0.026961688
+            "score": 0.5810765
           }
         ]
       },
@@ -1301,17 +1301,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:12",
+            "candidate_id": "chunk:35",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:30",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -1333,17 +1333,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }
@@ -1366,19 +1366,19 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:37",
             "source_type": "dense_vector",
-            "score": 0.08925924
+            "score": 0.6789142
           },
           {
-            "candidate_id": "chunk:17",
+            "candidate_id": "chunk:35",
             "source_type": "dense_vector",
-            "score": 0.049901932
+            "score": 0.66926444
           },
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:31",
             "source_type": "dense_vector",
-            "score": 0.043129824
+            "score": 0.65685004
           }
         ]
       },
@@ -1398,17 +1398,17 @@
         ],
         "top_candidates": [
           {
-            "candidate_id": "chunk:19",
+            "candidate_id": "chunk:37",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:13",
+            "candidate_id": "chunk:33",
             "source_type": "keyword",
             "score": 0.5
           },
           {
-            "candidate_id": "chunk:15",
+            "candidate_id": "chunk:31",
             "source_type": "keyword",
             "score": 0.5
           }

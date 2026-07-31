@@ -337,6 +337,8 @@ cd server
 
 消融实验支持 Keyword only、Dense only、Keyword + Dense、Keyword + Dense + Structured Rule、三路召回 + RRF、三路召回 + RRF + 启发式重排。报告输出 Recall@K、MRR、分类召回、失败样本和平均检索耗时。
 
+当前提交附带的检索消融报告使用真实 OpenAI-compatible Embedding 配置执行，结果保存在 `server/evals/reports/retrieval_ablation_latest.json`：三路召回 + RRF 的 `Recall@5=1.0`、`MRR=0.4528`；三路召回 + RRF + 启发式重排的 `Recall@5=1.0`、`MRR=0.8861`。由于真实 Embedding 需要外部 API 调用，平均检索耗时约 2.6s，本地演示速度会明显慢于 Mock 模式。
+
 RAGAS 评测：
 
 RAGAS 依赖较新的 LangChain/LangGraph 生态，和主后端固定依赖不完全兼容。为避免评测依赖污染运行环境，建议单独创建隔离环境：
