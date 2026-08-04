@@ -2,6 +2,17 @@ from typing import Any, TypedDict
 
 
 class AgentState(TypedDict, total=False):
+    session: Any
+    user: Any
+    question: str
+    effective_question: str
+    runtime: Any
+    started_at: Any
+    plan: Any
+    answer_response: Any
+    draft_answer: str
+    final_response: Any
+    blocked: bool
     thread_id: str
     run_id: str
     conversation_id: int

@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agent.graph import input_guard, run_response_guard_graph
 from app.agent.planner import build_agent_plan
+from app.agent.state import AgentState
 from app.agent.tools.executor import tool_executor
 from app.agent.tools.registry import (
     GetOrderDetailArgs,
@@ -40,6 +41,9 @@ from app.services.model_runtime_config_service import model_runtime_config_servi
 
 
 class AgentService:
+    def __init__(self) -> None:
+        self._customer_service_graph: Any | None = None
+
     async def chat(
         self,
         session: AsyncSession,
@@ -47,82 +51,179 @@ class AgentService:
         conversation_id: int,
         question: str,
     ) -> ChatResponse:
-        now = datetime.now()
-        run_id = "run_" + uuid4().hex
+        graph = self._build_customer_service_graph()
+        state = await graph.ainvoke(
+            {
+                "session": session,
+                "user": user,
+                "conversation_id": conversation_id,
+                "question": question,
+                "run_id": "run_" + uuid4().hex,
+                "thread_id": f"conversation-{conversation_id}",
+                "started_at": datetime.now(),
+                "risk_level": "LOW",
+            }
+        )
+        return cast(ChatResponse, state["final_response"])
+
+    def _build_customer_service_graph(self) -> Any:
+        if self._customer_service_graph is not None:
+            return self._customer_service_graph
+
+        from langgraph.graph import END, START, StateGraph
+
+        graph = StateGraph(AgentState)
+        graph.add_node("context_resolver", self._workflow_context_resolver)
+        graph.add_node("input_guard", self._workflow_input_guard)
+        graph.add_node("blocked_response", self._workflow_blocked_response)
+        graph.add_node("planner", self._workflow_planner)
+        graph.add_node("tool_or_retrieval_executor", self._workflow_tool_or_retrieval_executor)
+        graph.add_node("answer_polisher", self._workflow_answer_polisher)
+        graph.add_node("response_guardrail", self._workflow_response_guardrail)
+        graph.add_node("audit_finalize", self._workflow_audit_finalize)
+        graph.add_edge(START, "context_resolver")
+        graph.add_edge("context_resolver", "input_guard")
+        graph.add_conditional_edges(
+            "input_guard",
+            self._route_after_input_guard,
+            {
+                "blocked_response": "blocked_response",
+                "planner": "planner",
+            },
+        )
+        graph.add_edge("blocked_response", END)
+        graph.add_edge("planner", "tool_or_retrieval_executor")
+        graph.add_edge("tool_or_retrieval_executor", "answer_polisher")
+        graph.add_edge("answer_polisher", "response_guardrail")
+        graph.add_edge("response_guardrail", "audit_finalize")
+        graph.add_edge("audit_finalize", END)
+        self._customer_service_graph = graph.compile()
+        return self._customer_service_graph
+
+    async def _workflow_context_resolver(self, state: AgentState) -> AgentState:
+        session = cast(AsyncSession, state["session"])
+        conversation_id = int(state["conversation_id"])
+        question = str(state["question"])
+        started_at = cast(datetime, state["started_at"])
         effective_question = await self._resolve_conversation_context(session, conversation_id, question)
         runtime = await model_runtime_config_service.get_effective(session)
-        session.add(ChatMessage(conversation_id=conversation_id, role="USER", content=question, created_at=now))
+        session.add(ChatMessage(conversation_id=conversation_id, role="USER", content=question, created_at=started_at))
+        return {
+            "effective_question": effective_question,
+            "user_goal": effective_question,
+            "runtime": runtime,
+        }
+
+    async def _workflow_input_guard(self, state: AgentState) -> AgentState:
+        user = cast(AuthenticatedUser, state["user"])
+        guard_state = input_guard(
+            {
+                "run_id": str(state["run_id"]),
+                "conversation_id": int(state["conversation_id"]),
+                "authenticated_user_id": user.user_id,
+                "user_role": user.role,
+                "user_goal": str(state["effective_question"]),
+                "risk_level": str(state.get("risk_level", "LOW")),
+            }
+        )
+        risk_level = str(guard_state.get("risk_level", "LOW"))
+        return {
+            "risk_level": risk_level,
+            "decision_reason": guard_state.get("decision_reason"),
+            "blocked": risk_level == "FORBIDDEN",
+        }
+
+    def _route_after_input_guard(self, state: AgentState) -> str:
+        if state.get("blocked"):
+            return "blocked_response"
+        return "planner"
+
+    async def _workflow_blocked_response(self, state: AgentState) -> AgentState:
+        session = cast(AsyncSession, state["session"])
+        user = cast(AuthenticatedUser, state["user"])
+        conversation_id = int(state["conversation_id"])
+        run_id = str(state["run_id"])
+        started_at = cast(datetime, state["started_at"])
+        runtime = state["runtime"]
         guard_state = input_guard(
             {
                 "run_id": run_id,
                 "conversation_id": conversation_id,
                 "authenticated_user_id": user.user_id,
                 "user_role": user.role,
-                "user_goal": effective_question,
-                "risk_level": "LOW",
+                "user_goal": str(state["effective_question"]),
+                "risk_level": str(state.get("risk_level", "FORBIDDEN")),
             }
         )
-        if guard_state.get("risk_level") == "FORBIDDEN":
-            final_answer = "这个请求可能涉及越权或不安全操作，我不能直接执行，建议转人工处理。"
-            session.add(
-                AgentRun(
-                    run_id=run_id,
-                    thread_id=f"conversation-{conversation_id}",
-                    conversation_id=conversation_id,
-                    user_id=user.user_id,
-                    status="BLOCKED",
-                    intent="CLARIFICATION",
-                    risk_level="FORBIDDEN",
-                    started_at=now,
-                    completed_at=datetime.now(),
-                    final_answer=final_answer,
-                    request_id=uuid4().hex,
-                    model_name=self._runtime_model_name(runtime),
-                    config_version=self._runtime_config_version(runtime),
-                    prompt_version="controlled-workflow-v1",
-                )
+        final_answer = "这个请求可能涉及越权或不安全操作，我不能直接执行，建议转人工处理。"
+        session.add(
+            AgentRun(
+                run_id=run_id,
+                thread_id=str(state["thread_id"]),
+                conversation_id=conversation_id,
+                user_id=user.user_id,
+                status="BLOCKED",
+                intent="CLARIFICATION",
+                risk_level="FORBIDDEN",
+                started_at=started_at,
+                completed_at=datetime.now(),
+                final_answer=final_answer,
+                request_id=uuid4().hex,
+                model_name=self._runtime_model_name(runtime),
+                config_version=self._runtime_config_version(runtime),
+                prompt_version="controlled-workflow-v1",
             )
-            self._record_step(
-                session,
-                run_id,
-                "input_guard",
-                self._compact(effective_question),
-                str(guard_state.get("decision_reason", "forbidden")),
-                "BLOCKED",
+        )
+        self._record_step(
+            session,
+            run_id,
+            "input_guard",
+            self._compact(str(state["effective_question"])),
+            str(guard_state.get("decision_reason", "forbidden")),
+            "BLOCKED",
+        )
+        session.add(
+            ChatMessage(
+                conversation_id=conversation_id,
+                role="ASSISTANT",
+                content=final_answer,
+                sources_json=json.dumps({"sources": []}, ensure_ascii=False),
+                retrieval_score=Decimal("0"),
+                confidence_level="LOW",
+                need_human=True,
+                created_at=datetime.now(),
             )
-            session.add(
-                ChatMessage(
-                    conversation_id=conversation_id,
-                    role="ASSISTANT",
-                    content=final_answer,
-                    sources_json=json.dumps({"sources": []}, ensure_ascii=False),
-                    retrieval_score=Decimal("0"),
-                    confidence_level="LOW",
-                    need_human=True,
-                    created_at=datetime.now(),
-                )
-            )
-            await session.commit()
-            return ChatResponse(
+        )
+        await session.commit()
+        return {
+            "final_answer": final_answer,
+            "final_response": ChatResponse(
                 conversationId=conversation_id,
                 answer=final_answer,
                 sources=[],
                 retrievalScore=0,
                 confidenceLevel="LOW",
                 needHuman=True,
-            )
+            ),
+        }
 
-        plan = await build_agent_plan(session, effective_question)
+    async def _workflow_planner(self, state: AgentState) -> AgentState:
+        session = cast(AsyncSession, state["session"])
+        user = cast(AuthenticatedUser, state["user"])
+        conversation_id = int(state["conversation_id"])
+        run_id = str(state["run_id"])
+        runtime = state["runtime"]
+        plan = await build_agent_plan(session, str(state["effective_question"]))
         session.add(
             AgentRun(
                 run_id=run_id,
-                thread_id=f"conversation-{conversation_id}",
+                thread_id=str(state["thread_id"]),
                 conversation_id=conversation_id,
                 user_id=user.user_id,
                 status="RUNNING",
                 intent=plan.intent,
                 risk_level=plan.risk_level,
-                started_at=now,
+                started_at=cast(datetime, state["started_at"]),
                 request_id=uuid4().hex,
                 model_name=self._runtime_model_name(runtime),
                 config_version=self._runtime_config_version(runtime),
@@ -134,17 +235,32 @@ class AgentService:
             session,
             run_id,
             "planner",
-            self._compact(effective_question),
+            self._compact(str(state["effective_question"])),
             f"intent={plan.intent}, risk={plan.risk_level}",
             "COMPLETED",
         )
+        return {
+            "plan": plan,
+            "intent": plan.intent,
+            "risk_level": plan.risk_level,
+            "requires_confirmation": plan.requires_confirmation,
+            "selected_tools": plan.required_tools,
+            "decision_reason": plan.decision_reason,
+        }
+
+    async def _workflow_tool_or_retrieval_executor(self, state: AgentState) -> AgentState:
+        session = cast(AsyncSession, state["session"])
+        user = cast(AuthenticatedUser, state["user"])
+        conversation_id = int(state["conversation_id"])
+        run_id = str(state["run_id"])
+        plan = cast(AgentPlan, state["plan"])
         answer_response = await self._answer_with_tools(
             session,
             user,
             conversation_id,
             run_id,
             plan,
-            effective_question,
+            str(state["effective_question"]),
         )
         self._record_step(
             session,
@@ -154,20 +270,40 @@ class AgentService:
             f"confidence={answer_response.confidenceLevel}, need_human={answer_response.needHuman}",
             "COMPLETED",
         )
-        answer = await self._polish_answer_with_llm(session, effective_question, answer_response.answer)
-        state = run_response_guard_graph(
+        return {
+            "answer_response": answer_response,
+            "draft_answer": answer_response.answer,
+        }
+
+    async def _workflow_answer_polisher(self, state: AgentState) -> AgentState:
+        session = cast(AsyncSession, state["session"])
+        answer_response = cast(ChatResponse, state["answer_response"])
+        answer = await self._polish_answer_with_llm(
+            session,
+            str(state["effective_question"]),
+            answer_response.answer,
+        )
+        return {"final_answer": answer}
+
+    async def _workflow_response_guardrail(self, state: AgentState) -> AgentState:
+        user = cast(AuthenticatedUser, state["user"])
+        plan = cast(AgentPlan, state["plan"])
+        session = cast(AsyncSession, state["session"])
+        run_id = str(state["run_id"])
+        answer = str(state["final_answer"])
+        guard_state = run_response_guard_graph(
             {
                 "run_id": run_id,
-                "conversation_id": conversation_id,
+                "conversation_id": int(state["conversation_id"]),
                 "authenticated_user_id": user.user_id,
                 "user_role": user.role,
-                "user_goal": effective_question,
+                "user_goal": str(state["effective_question"]),
                 "intent": plan.intent,
                 "risk_level": plan.risk_level,
                 "final_answer": answer,
             }
         )
-        final_answer = state.get("final_answer") or answer
+        final_answer = guard_state.get("final_answer") or answer
         self._record_step(
             session,
             run_id,
@@ -176,6 +312,14 @@ class AgentService:
             self._compact(final_answer),
             "COMPLETED",
         )
+        return {"final_answer": final_answer}
+
+    async def _workflow_audit_finalize(self, state: AgentState) -> AgentState:
+        session = cast(AsyncSession, state["session"])
+        conversation_id = int(state["conversation_id"])
+        run_id = str(state["run_id"])
+        answer_response = cast(ChatResponse, state["answer_response"])
+        final_answer = str(state["final_answer"])
         session.add(
             ChatMessage(
                 conversation_id=conversation_id,
@@ -194,14 +338,16 @@ class AgentService:
             .values(status="COMPLETED", completed_at=datetime.now(), final_answer=final_answer)
         )
         await session.commit()
-        return ChatResponse(
-            conversationId=conversation_id,
-            answer=final_answer,
-            sources=answer_response.sources,
-            retrievalScore=answer_response.retrievalScore,
-            confidenceLevel=answer_response.confidenceLevel,
-            needHuman=answer_response.needHuman,
-        )
+        return {
+            "final_response": ChatResponse(
+                conversationId=conversation_id,
+                answer=final_answer,
+                sources=answer_response.sources,
+                retrievalScore=answer_response.retrievalScore,
+                confidenceLevel=answer_response.confidenceLevel,
+                needHuman=answer_response.needHuman,
+            )
+        }
 
     async def _polish_answer_with_llm(self, session: AsyncSession, question: str, draft_answer: str) -> str:
         runtime = await model_runtime_config_service.get_effective(session)
